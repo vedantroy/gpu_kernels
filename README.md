@@ -13,7 +13,7 @@ The PagedAttention kernel is not faster than the existing CUDA kernel because Tr
 AWQ:
 ![AWQ](./assets/awq.png)
 
-AWQ is a quantization method. This kernel implements the fast inference using the quantized weights.
+AWQ is a quantization method. This kernel implements fast inference using the quantized weights.
 
 Roughly, the AWQ kernel is dequantizing a matrix using the formula `scale * (weight - zero_point)` before doing a standard FP16 matmul.
 
