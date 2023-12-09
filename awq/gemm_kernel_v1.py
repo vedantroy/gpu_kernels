@@ -3,7 +3,38 @@ import torch
 import triton
 import triton.language as tl
 
+# from . import custom_autotune
+import custom_autotune
 
+
+# Auottuner configs:
+# https://github.com/fpgaminer/GPTQ-triton/blob/main/src/gptq_triton/quant_linear.py
+# https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html#sphx-glr-getting-started-tutorials-03-matrix-multiplication-py
+# Autotuner source:
+# https://github.com/openai/triton/blob/main/python/triton/runtime/autotuner.py
+# Custom autotuner:
+# https://github.com/fpgaminer/GPTQ-triton/blob/main/src/gptq_triton/custom_autotune.py
+@custom_autotune.autotune(
+    configs=[
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 64, 'GROUP_SIZE_M': 8}, num_stages=3,
+                      num_warps=8),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=4,
+                      num_warps=4),
+        triton.Config({'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 32, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
+                      num_warps=2),
+        triton.Config({'BLOCK_SIZE_M': 32, 'BLOCK_SIZE_N': 64, 'BLOCK_SIZE_K': 32, 'GROUP_SIZE_M': 8}, num_stages=5,
+                      num_warps=2),
+    ],
+    key=['M', 'N', 'K'],
+)
 @triton.jit
 def quant_matmul_kernel(
     # Pointers to matrices
@@ -42,14 +73,14 @@ def quant_matmul_kernel(
     pid_n = (pid % num_pid_in_group) // group_size_m
 
     offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
-    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
+    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N))
     offs_k = tl.arange(0, BLOCK_SIZE_K)  # (K,)
     qw_shifter = (offs_k % 8) * 4
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a_offs = (k * BLOCK_SIZE_K) + (offs_am[:, None] * stride_a_m + offs_k[None, :])  # (M, K)
-        a = tl.load( a_ptr + a_offs)
+        a = tl.load(a_ptr + a_offs)
 
         qw_offs = (((k * BLOCK_SIZE_K) + offs_k[:, None]) // 8) * stride_qw_k + offs_bn[
             None, :
@@ -94,10 +125,10 @@ def quant_matmul(a, qw, qzeros, scales, *, M, N, K, pack_num, group_size):
     # group_size, K must be divisible by BLOCK_SIZE_K
     assert group_size % 64 == 0, f"group_size {group_size} is not a multiple of 64"
     assert K % 64 == 0, f"K {K} is not a multiple of 64"
+    # BLOCK_SIZE_N has possible values of 32, 64, 128, 256
+    # N must be divisible by BLOCK_SIZE_N
+    assert N % 256 == 0, f"N {N} is not a multiple of 256"
 
-    BLOCK_SIZE_M = 64
-    BLOCK_SIZE_N = 32
-    BLOCK_SIZE_K = 32
     grid_1d = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
@@ -111,10 +142,6 @@ def quant_matmul(a, qw, qzeros, scales, *, M, N, K, pack_num, group_size):
         N=N,
         K=K,
         group_size=group_size,
-        BLOCK_SIZE_M=BLOCK_SIZE_M,
-        BLOCK_SIZE_N=BLOCK_SIZE_N,
-        BLOCK_SIZE_K=BLOCK_SIZE_K,
-        GROUP_SIZE_M=1,
     )
     return c
 
@@ -123,12 +150,13 @@ if __name__ == "__main__":
     import awq_inference_engine as ie
 
     M = torch.randint(0, 1000, (1,)).item()
-    print(f"Testing with M={M}")
 
     # M = 128
     N = K = 4096
     pack_num = 8
     group_size = 128
+
+    print(f"Testing with M={M}")
 
     int32_bounds = (torch.iinfo(torch.int32).min, torch.iinfo(torch.int32).max)
     inputs = torch.randn((M, K), dtype=torch.float16, device="cuda")
