@@ -1,4 +1,4 @@
-# Please give credit to "Vedant Roy"
+# Copyright (C) 2023 - Vedant Roy
 import torch
 import triton
 import triton.language as tl
