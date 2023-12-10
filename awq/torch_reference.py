@@ -1,17 +1,16 @@
 # A reference implementation of the dequantization in pure Pytorch
 import torch
 
-# Generate random data
-M = torch.randint(0, 1000, (1,)).item()
-N = K = 4096
-pack_num = 8
-group_size = 128
-print(f"Testing with M={M}")
-int32_bounds = (torch.iinfo(torch.int32).min, torch.iinfo(torch.int32).max)
-inputs = torch.randn((M, K), dtype=torch.float16, device="cuda")
-qweight = torch.randint(*int32_bounds, (N, K // pack_num), dtype=torch.int32, device="cuda")
-scales = 0.001 * torch.abs(torch.randn((N, K // group_size), dtype=torch.float16, device="cuda"))
-qzeros = torch.randint(*int32_bounds, (N, K // group_size // pack_num), dtype=torch.int32, device="cuda")
+def generate_random_data(M, N, K):
+    pack_num = 8
+    group_size = 128
+    print(f"Testing with M={M}")
+    int32_bounds = (torch.iinfo(torch.int32).min, torch.iinfo(torch.int32).max)
+    inputs = torch.randn((M, K), dtype=torch.float16, device="cuda")
+    qweight = torch.randint(*int32_bounds, (N, K // pack_num), dtype=torch.int32, device="cuda")
+    scales = 0.001 * torch.abs(torch.randn((N, K // group_size), dtype=torch.float16, device="cuda"))
+    qzeros = torch.randint(*int32_bounds, (N, K // group_size // pack_num), dtype=torch.int32, device="cuda")
+    return inputs, qweight, scales, qzeros
 
 def matmul_simple(
     a, qw, qzeros, scales
@@ -41,6 +40,8 @@ def matmul_simple(
 
     from tqdm import tqdm
 
+    assert 0xF == 0b1111
+
     for row in tqdm(range(n_rows_to_dequant)):
         dequant_row = torch.zeros((K2, ), dtype=torch.float32, device=a.device)
         for col in range(K2):
@@ -54,6 +55,8 @@ def matmul_simple(
             # assert qzero == qzeros[row][0]
             # assert qweight in [qw[row][0], qw[row][1], qw[row][2], qw[row][3]]
 
+            # This makes sense b/c the 0th value is in the rightmost section of the packed number
+            # so it needs to be shifted the least
             qzero_unpacked = ((qzero >> (4 * (group_idx % pack_num))) & 0xF).to(torch.float32)
             qweight_unpacked = ((qweight >> (4 * (col % pack_num))) & 0xF).to(torch.float32)
             dequant = scale * (qweight_unpacked - qzero_unpacked)
@@ -62,5 +65,9 @@ def matmul_simple(
     torch.cuda.synchronize()
     print("finished dequantizing ...")
     return dequant_matrix
- 
-manual_dequant = matmul_simple(inputs, qweight, qzeros, scales)
+
+if __name__ == "__main__":
+    M = 128
+    N = K = 4096
+    inputs, qweight, scales, qzeros = generate_random_data(M, N, K)
+    manual_dequant = matmul_simple(inputs, qweight, qzeros, scales)
