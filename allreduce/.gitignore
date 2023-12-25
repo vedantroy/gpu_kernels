@@ -1,0 +1,9 @@
+# gitignore for pytorch CUDA extension
+
+
+
+*.egg-info/
+dist/
+build/
+*.pyc
+__pycache__/
