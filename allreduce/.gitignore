@@ -1,9 +1,9 @@
-# gitignore for pytorch CUDA extension
-
-
-
+# Python
 *.egg-info/
 dist/
 build/
 *.pyc
 __pycache__/
+
+# Convention for compiled binaries
+*.bin

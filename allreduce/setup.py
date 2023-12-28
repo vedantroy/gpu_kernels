@@ -11,13 +11,16 @@ extra_compile_args = {
     "nvcc": ["-O2", "-std=c++17"],
 }
 
+
 def get_path(*filepath) -> str:
     return os.path.join(ROOT_DIR, *filepath)
+
 
 def get_requirements() -> List[str]:
     with open(get_path("requirements.txt")) as f:
         requirements = f.read().strip().split("\n")
     return requirements
+
 
 setup(
     name="cuda_experiments",
@@ -26,8 +29,9 @@ setup(
         CUDAExtension(
             name="cuda_experiments",
             sources=[
-                "csrc/pybind.cpp", 
-                "csrc/add_one.cu", 
+                "csrc/pybind.cpp",
+                "csrc/add_one/add_one.cu",
+                "csrc/reference_allreduce/fast_allreduce.cu",
             ],
             extra_compile_args=extra_compile_args,
         ),
