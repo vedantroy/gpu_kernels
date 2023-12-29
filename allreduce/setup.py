@@ -6,9 +6,11 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 ROOT_DIR = os.path.dirname(__file__)
 
+print(f"# CPUs: {os.cpu_count()}")
+
 extra_compile_args = {
     "cxx": ["-g", "-O2", "-std=c++17"],
-    "nvcc": ["-O2", "-std=c++17"],
+    "nvcc": ["-O2", "-std=c++17", f"--threads={os.cpu_count()}"],
 }
 
 
@@ -31,7 +33,7 @@ setup(
             sources=[
                 "csrc/pybind.cpp",
                 "csrc/add_one/add_one.cu",
-                "csrc/reference_allreduce/fast_allreduce.cu",
+                # "csrc/reference_allreduce/fast_allreduce.cu",
             ],
             extra_compile_args=extra_compile_args,
         ),
