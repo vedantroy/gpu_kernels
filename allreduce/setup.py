@@ -4,17 +4,20 @@ import os
 from setuptools import find_packages, setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
-# 56 second wall clock time
 # T4 GPU
 # os.environ['TORCH_CUDA_ARCH_LIST'] = '7.5'
+# A2000
+os.environ['TORCH_CUDA_ARCH_LIST'] = '8.6'
 
 ROOT_DIR = os.path.dirname(__file__)
 
 print(f"# CPUs: {os.cpu_count()}")
 
 extra_compile_args = {
-    "cxx": ["-g", "-O2", "-std=c++17"],
-    "nvcc": ["-O2", "-std=c++17", f"--threads={os.cpu_count()}"],
+    # "cxx": ["-g", "-O2", "-std=c++17"],
+    # "nvcc": ["-O2", "-std=c++17", f"--threads={os.cpu_count()}"],
+    "cxx": ["-g", "-std=c++17"],
+    "nvcc": ["-std=c++17", f"--threads={os.cpu_count()}"],
 }
 
 

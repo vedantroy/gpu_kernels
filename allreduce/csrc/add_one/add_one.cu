@@ -9,7 +9,7 @@ __global__ void add_one_kernel(const float* in_data, float* out_data, int size) 
 }
 
 torch::Tensor add_one(torch::Tensor input) {
-    TORCH_CHECK(input.type().is_cuda() && input.type().scalarType() == at::ScalarType::Float, "input must be a CUDA float tensor");
+    TORCH_CHECK(input.is_cuda() && input.type().scalarType() == at::ScalarType::Float, "input must be a CUDA float tensor");
     auto output = torch::empty_like(input);
     const auto size = input.numel();
     const int threads = 1024;

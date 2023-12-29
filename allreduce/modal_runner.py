@@ -33,7 +33,11 @@ def build_kernel():
     r("git clone --depth 1 https://github.com/vedantroy/gpu_kernels.git")
     print(f"Clone time: {time.time() - t0:.2f}s") # ~ 0.5s
     r("cd gpu_kernels/allreduce && python3 setup.py install")
-    print(f"Build time: {time.time() - t0:.2f}s") # ~ 70s (my laptop CPU is ~56 seconds wall clock time)
+    # modal (8 cpu) = ~70s
+    # laptop = ~56s
+    # vast (ryzen 9) = ~45s
+    # vast (ryzen 9, no optimization) = ~40s
+    print(f"Build time: {time.time() - t0:.2f}s")
 
     code = dedent("""
     import torch
