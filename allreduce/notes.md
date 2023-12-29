@@ -14,6 +14,8 @@ Installation:
 - `sudo apt-get install openmpi-bin openmpi-common libopenmpi-dev`
 - Use `mpicc -show` to find where your mpi headers are
 
+Runtime is near instant. *Torch extension process must have been adding a lot of overhead*
+
 ## File Structure
 - fast_allreduce.cuh => implements allreduce w/o touching Pytorch
 - fast_allreduce.cu => torch bindings
