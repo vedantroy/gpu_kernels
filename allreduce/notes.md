@@ -12,6 +12,7 @@ I suspect most of the compilation time for the very simple add_one extension com
 ### mpi_cuda_helloworld
 Installation:
 - `sudo apt-get install openmpi-bin openmpi-common libopenmpi-dev`
+- Use `mpicc -show` to find where your mpi headers are
 
 ## File Structure
 - fast_allreduce.cuh => implements allreduce w/o touching Pytorch
