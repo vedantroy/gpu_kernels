@@ -1,4 +1,3 @@
-#pragma once
 #include <torch/extension.h>
 #include "add_one/add_one.h"
 // #include "reference_allreduce/fast_allreduce.cuh"

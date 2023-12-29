@@ -1,6 +1,7 @@
 import time
 import modal
 import subprocess
+from textwrap import dedent
 
 image = (
     # Use a version of CUDA that's compatible w/ torch
@@ -33,3 +34,28 @@ def build_kernel():
     print(f"Clone time: {time.time() - t0:.2f}s")
     r("cd gpu_kernels/allreduce && python3 setup.py install")
     print(f"Build time: {time.time() - t0:.2f}s")
+
+    code = dedent("""
+    import torch
+    import cuda_experiments
+
+    x = torch.ones(2, device="cuda")
+    x_plus_x = cuda_experiments.add_one(x)
+    torch.testing.assert_close(x_plus_x, x + x)
+    """)
+
+    r(f"echo '{code}' > gpu_kernels/allreduce/test.py")
+    r("cd gpu_kernels/allreduce && python3 test.py")
+
+    print(f"All time: {time.time() - t0:.2f}s")
+
+# Topology, SMI, etc.
+
+#     result = subprocess.run(["nvidia-smi", "topo", "-m"], stdout=subprocess.PIPE)
+# subprocess.run(
+#     [
+#         "nvidia-smi",
+#         "--query-gpu=index,name,utilization.gpu,utilization.memory,memory.total,memory.free,memory.used",
+#         "--format=csv",
+#     ]
+# )
