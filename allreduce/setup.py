@@ -4,6 +4,10 @@ import os
 from setuptools import find_packages, setup
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
+# 56 second wall clock time
+# T4 GPU
+# os.environ['TORCH_CUDA_ARCH_LIST'] = '7.5'
+
 ROOT_DIR = os.path.dirname(__file__)
 
 print(f"# CPUs: {os.cpu_count()}")

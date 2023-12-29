@@ -31,9 +31,9 @@ r = lambda *args, **kwargs: subprocess.run(*args, shell=True, **kwargs)
 def build_kernel():
     t0 = time.time()
     r("git clone --depth 1 https://github.com/vedantroy/gpu_kernels.git")
-    print(f"Clone time: {time.time() - t0:.2f}s")
+    print(f"Clone time: {time.time() - t0:.2f}s") # ~ 0.5s
     r("cd gpu_kernels/allreduce && python3 setup.py install")
-    print(f"Build time: {time.time() - t0:.2f}s")
+    print(f"Build time: {time.time() - t0:.2f}s") # ~ 70s (my laptop CPU is ~56 seconds wall clock time)
 
     code = dedent("""
     import torch
@@ -45,7 +45,7 @@ def build_kernel():
     """)
 
     r(f"echo '{code}' > gpu_kernels/allreduce/test.py")
-    r("cd gpu_kernels/allreduce && python3 test.py")
+    r("cd gpu_kernels/allreduce && python3 test.py") # ~ 5s
 
     print(f"All time: {time.time() - t0:.2f}s")
 
