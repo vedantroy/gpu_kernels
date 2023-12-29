@@ -1,4 +1,19 @@
-File structure:
+## Compilation
+### add_one
+- modal (8 cpu) = ~70s
+- laptop = ~56s
+- vast (ryzen 9) = ~45s
+- vast (ryzen 9, no optimization) = ~40s
+    - ~ 38s to run add_one.o
+    - ~ 20s to compile pybind.o
+
+I suspect most of the compilation time for the very simple add_one extension comes from the torch headers. Let me benchmark compiling a simple kernel that doesn't use torch at all.
+
+### mpi_cuda_helloworld
+Installation:
+- `sudo apt-get install openmpi-bin openmpi-common libopenmpi-dev`
+
+## File Structure
 - fast_allreduce.cuh => implements allreduce w/o touching Pytorch
 - fast_allreduce.cu => torch bindings
 - fast_all_reduce_test.cu => driver to test (does not include fast_allreduce.cu)

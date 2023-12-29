@@ -48,3 +48,39 @@ setup(
     cmdclass={"build_ext": BuildExtension},
     install_requires=get_requirements(),
 )
+
+# 38 secs nvcc
+# pybind.cpp: 20s
+# 
+
+# delete object files
+# find ./build/temp.linux-x86_64-cpython-311/csrc -name "*.o" | xargs rm
+
+# ninja file:
+# ninja_required_version = 1.3
+# cxx = c++
+# nvcc = /usr/local/cuda/bin/nvcc
+# 
+# cflags = -pthread -B /root/micromamba/envs/allreduce/compiler_compat -DNDEBUG -fwrapv -O2 -Wall -fPIC -O2 -isystem /root/micromamba/envs/allreduce/include -fPIC -O2 -isystem /root/micromamba/envs/allreduce/include -fPIC -I/root/micromamba/envs/allreduce/lib/python3.11/site-packages/torch/include -I/root/micromamba/envs/allreduce/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -I/root/micromamba/envs/allreduce/lib/python3.11/site-packages/torch/include/TH -I/root/micromamba/envs/allreduce/lib/python3.11/site-packages/torch/include/THC -I/usr/local/cuda/include -I/root/micromamba/envs/allreduce/include/python3.11 -c
+# post_cflags = -g -std=c++17 -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=cuda_experiments -D_GLIBCXX_USE_CXX11_ABI=0
+# cuda_cflags = -I/root/micromamba/envs/allreduce/lib/python3.11/site-packages/torch/include -I/root/micromamba/envs/allreduce/lib/python3.11/site-packages/torch/include/torch/csrc/api/include -I/root/micromamba/envs/allreduce/lib/python3.11/site-packages/torch/include/TH -I/root/micromamba/envs/allreduce/lib/python3.11/site-packages/torch/include/THC -I/usr/local/cuda/include -I/root/micromamba/envs/allreduce/include/python3.11 -c
+# cuda_post_cflags = -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options ''"'"'-fPIC'"'"'' -std=c++17 --threads=24 -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=cuda_experiments -D_GLIBCXX_USE_CXX11_ABI=0 -gencode=arch=compute_86,code=sm_86
+# cuda_dlink_post_cflags = 
+# ldflags = 
+# 
+# rule compile
+#   command = $cxx -MMD -MF $out.d $cflags -c $in -o $out $post_cflags
+#   depfile = $out.d
+#   deps = gcc
+# 
+# rule cuda_compile
+#   depfile = $out.d
+#   deps = gcc
+#   command = $nvcc  $cuda_cflags -c $in -o $out $cuda_post_cflags
+# 
+# 
+# 
+# 
+# 
+# build /root/gpu_kernels/allreduce/build/temp.linux-x86_64-cpython-311/csrc/add_one/add_one.o: cuda_compile /root/gpu_kernels/allreduce/csrc/add_one/add_one.cu
+# build /root/gpu_kernels/allreduce/build/temp.linux-x86_64-cpython-311/csrc/pybind.o: compile /root/gpu_kernels/allreduce/csrc/pybind.cpp
