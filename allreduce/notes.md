@@ -12,6 +12,7 @@ I suspect most of the compilation time for the very simple add_one extension com
 ### mpi_cuda_helloworld
 Installation:
 - `sudo apt-get install openmpi-bin openmpi-common libopenmpi-dev`
+- `sudo apt install libnccl-dev libnccl2`
 - Use `mpicc -show` to find where your mpi headers are
 
 Runtime is near instant. *Torch extension process must have been adding a lot of overhead*
