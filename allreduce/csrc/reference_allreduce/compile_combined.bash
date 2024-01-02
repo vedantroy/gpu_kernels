@@ -1,28 +1,36 @@
 #! /usr/bin/env bash
 set -euxo pipefail
 
-# Get GPU name
-gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader)
+  # Get GPU name
+  gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader)
 
-# Set architecture based on GPU name
-case $gpu_name in
-  *T4*)
-    arch=compute_75
-    code=sm_75
-    ;;
-  *A10*)
-    arch=compute_80
-    code=sm_80
-    ;;
-  *A2000*)
-    arch=compute_86
-    code=sm_86
-    ;;
-  *)
-    echo "Unsupported GPU: $gpu_name"
-    exit 1
-    ;;
-esac
+  # Set architecture based on GPU name
+  case $gpu_name in
+    *T4*)
+      arch=compute_75
+      code=sm_75
+      ;;
+    *A10*)
+      arch=compute_80
+      code=sm_80
+      ;;
+    *V100*)
+      arch=compute_70
+      code=sm_70
+      ;;
+    *A2000*)
+      arch=compute_86
+      code=sm_86
+      ;;
+    *V100*)
+      arch=compute_70
+      code=sm_70
+      ;;
+    *)
+      echo "Unsupported GPU: $gpu_name"
+      exit 1
+      ;;
+  esac
 
 echo "GPU: $gpu_name"
 echo "Architecture: $arch"

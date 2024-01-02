@@ -273,5 +273,6 @@ int main(int argc, char **argv) {
   }
 
   cudaProfilerStop();
+  MPI_Finalize(); // prevents MPI error
   return EXIT_SUCCESS;
 }

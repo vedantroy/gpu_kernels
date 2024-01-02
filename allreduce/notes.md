@@ -16,6 +16,7 @@ Installation:
 - Use `mpicc -show` to find where your mpi headers are
 
 Runtime is near instant. *Torch extension process must have been adding a lot of overhead*
+Run with `mpirun --allow-run-as-root -np 2 ./fastallreduce_test.bin`
 
 ## File Structure
 - fast_allreduce.cuh => implements allreduce w/o touching Pytorch
@@ -24,7 +25,7 @@ Runtime is near instant. *Torch extension process must have been adding a lot of
 
 ## TODOs
 [01-01-24]
-- [ ] Get CUDA running on Modal
+- [ ] Get CUDA running on Modal (*abandoned -- too much effort*)
 - [ ] Figure out if register_graph_buffer is only used in tests
 - [ ] Understand how rank data works (how much is allocated / why is it allocated?)
 
