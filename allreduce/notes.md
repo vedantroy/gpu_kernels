@@ -22,6 +22,12 @@ Runtime is near instant. *Torch extension process must have been adding a lot of
 - fast_allreduce.cu => torch bindings
 - fast_all_reduce_test.cu => driver to test (does not include fast_allreduce.cu)
 
+## TODOs
+[01-01-24]
+- [ ] Get CUDA running on Modal
+- [ ] Figure out if register_graph_buffer is only used in tests
+- [ ] Understand how rank data works (how much is allocated / why is it allocated?)
+
 - [ ] Understand basic MPI programming model
 - [ ] Play a bit w/ launching MPI + the basic MPI programs
 - Run MPI allgather on CPU, figure out how to run it on 2/4 GPUs w/ modal
