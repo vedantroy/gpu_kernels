@@ -18,6 +18,20 @@ image = (
     # openmpi (nccl is already installed, so skip "libnccl-dev", "libnccl2")
     .apt_install("openmpi-bin", "openmpi-common", "libopenmpi-dev")
 )
+
+openmpi_src_image = (
+    # Use a version of CUDA that's compatible w/ torch
+    modal.Image.from_registry(
+        "nvidia/cuda:12.2.2-devel-ubuntu22.04", add_python="3.11")
+    .pip_install("sh", "torch==2.1.2", "ninja")
+    .apt_install("git", "build-essential", "clang", "autotools-dev", "autoconf", "libtool")
+    .run_commands(
+        "git clone https://github.com/open-mpi/ompi.git",
+        "cd ompi && git checkout v2.x && ./autogen.pl && ./configure",
+        "cd ompi && make all && sudo make install"
+    )
+)
+
 stub = modal.Stub()
 
 # T4 (turing) has ~ instant results for 2,4 GPU count
@@ -29,7 +43,7 @@ a10g = modal.gpu.A10G(count=2)
 dirname = os.path.dirname(__file__)
 csrc_dir = Path(dirname) / "csrc"
 
-@stub.function(gpu=a10g, image=image, cpu=8, 
+@stub.function(gpu=a10g, image=openmpi_src_image, cpu=8, 
                mounts=[modal.Mount.from_local_dir(csrc_dir, remote_path="/root/csrc")])
 def build_pure_cuda_kernel():
     t0 = time.time()
@@ -37,9 +51,11 @@ def build_pure_cuda_kernel():
     print(f"Build time: {time.time() - t0:.2f}s")
     with open("hostfile.txt", "w") as f:
         f.write("localhost slots=2 max_slots=2")
-    # r("env CUDA_VISIBLE_DEVICES=0,1 mpirun --hostfile hostfile.txt  --mca btl_vader_single_copy_mechanism none  --allow-run-as-root -np 2 csrc/reference_allreduce/fastallreduce_test.bin")
-    # r("mpirun --hostfile hostfile.txt  --mca btl_vader_single_copy_mechanism none  --allow-run-as-root -np 2 csrc/reference_allreduce/fastallreduce_test.bin")
-    r("mpirun --hostfile hostfile.txt  --allow-run-as-root -np 2 csrc/reference_allreduce/fastallreduce_test.bin")
+    # print the mpi version
+    r("mpirun --hostfile hostfile.txt --mca btl ^vader --allow-run-as-root -np 2 csrc/reference_allreduce/fastallreduce_test.bin")
+    # r("mpirun --hostfile hostfile.txt  --allow-run-as-root -np 2 csrc/reference_allreduce/fastallreduce_test.bin")
+    # r("mpirun --hostfile hostfile.txt --mca btl ^vader --allow-run-as-root -np 2 csrc/reference_allreduce/fastallreduce_test.bin")
+    # r("mpirun --mca btl ^vader --allow-run-as-root -np 2 csrc/reference_allreduce/fastallreduce_test.bin")
     print(f"Total time: {time.time() - t0:.2f}s")
 
 
