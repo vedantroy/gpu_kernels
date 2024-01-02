@@ -406,6 +406,8 @@ class FastAllreduce {
           std::to_string(d_rank_data_base_ + num - d_rank_data_end_));
   }
 
+  // I would rename as:
+  // void *self => void *cur_rank_ptr
   void register_buffer(const std::vector<std::string> &handles,
                        const std::vector<int64_t> &offsets, void *self) {
     check_rank_data_capacity();
@@ -441,7 +443,10 @@ class FastAllreduce {
       const std::vector<std::vector<int64_t>> &offsets) {
     auto num_buffers = graph_unreg_buffers_.size();
     check_rank_data_capacity(num_buffers);
+
+    // Each buffer is registered across (up to) 8 ranks
     std::vector<RankData> rank_data(num_buffers);
+
     for (int i = 0; i < num_buffers; i++) {
       auto self_ptr = graph_unreg_buffers_[i];
       auto &rd = rank_data[i];

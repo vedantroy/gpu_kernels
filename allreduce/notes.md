@@ -25,10 +25,25 @@ Run with `mpirun --allow-run-as-root -np 2 ./fastallreduce_test.bin`
 
 ## TODOs
 [01-01-24]
-- [ ] Get CUDA running on Modal (*abandoned -- too much effort*)
-- [ ] Figure out if register_graph_buffer is only used in tests
-- [ ] Understand how rank data works (how much is allocated / why is it allocated?)
+- [ ] Get CUDA running on Modal
+    - Abandoned, too much effort
+- [X] Figure out if register_graph_buffer is only used in tests
+    - No, it's used in the Python bindings
 
+- Each *buffer* has a `RankData`
+- > The rank data is an array to store the registered IPC addresses for all ranks for each input address passed in. 
+- `buffers_` is (pointer => `RankData`), the pointer is to an input on the current rank?
+    - The input in the CUDA test is `self_data`, which is the second section of the main test buffer
+    - > The first section is a temporary buffer for storing intermediate allreduce results, if a particular algorithm requires it. The second section is for the input to the allreduce
+- Thus, `std::unordered_map<void *, RankData *> buffers_;` is map of (pointer on current rank) => (pointers on all ranks)
+- Also, `RankData *` is a pointer to `RankData` stored on GPU memory
+- `*d_rank_data_base` and `*d_rank_data_end` are pointers that mark the start and end, respectively, of a segment of GPU memory allocated for storing `RankData` instances. As new `RankData` instances are copied to the device, `*d_rank_data_base` is incremented, effectively moving the 'start' pointer forward. This means that `*d_rank_data_base` always points to the next available location within the allocated memory segment where new RankData can be copied.
+- `ipc_handles_` stores all the ipc handles so they can be closed once the `FastAllreduce` class is destroyed
+- `Metadata` stores a `Signal` + a counter for the current rank. The `Signal` contains a start/end field, both of which are a `union` of 64-bit int and 8-bytes. The `Signal` is a synchronization primitive.
+- `RankSignals` consists of an array of 8 device-pointers, each pointing to a `Signal`
+- `RankSignals` itself + the device-pointers are stored in CPU memory 
+
+- [ ] Understand the rank data array
 - [ ] Understand basic MPI programming model
 - [ ] Play a bit w/ launching MPI + the basic MPI programs
 - Run MPI allgather on CPU, figure out how to run it on 2/4 GPUs w/ modal
