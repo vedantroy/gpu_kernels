@@ -139,13 +139,20 @@ void run(int myRank, int nRanks, ncclComm_t &comm, int threads, int block_limit,
     fa.register_buffer(handles, offsets, self_data);
   }
 
+  // Ground truth data
   double *verification_buffer;
   CUDACHECK(cudaMallocHost(&verification_buffer, data_size * sizeof(double)));
+
   curandState_t *states;
   CUDACHECK(cudaMalloc(&states, sizeof(curandState_t) * nRanks * data_size));
+
+  // blocks, threads per block
   init_rand<<<108, 1024, 0, stream>>>(states, data_size, nRanks);
+
+  // self_data is inputs for current rank
   gen_data<T><<<108, 1024, 0, stream>>>(states, self_data, verification_buffer,
                                         myRank, nRanks, data_size);
+
   CUDACHECK(cudaMemcpyAsync(self_data_copy, self_data, data_size * sizeof(T),
                             cudaMemcpyDeviceToDevice, stream));
   cudaEvent_t start, stop;
@@ -208,6 +215,7 @@ void run(int myRank, int nRanks, ncclComm_t &comm, int threads, int block_limit,
   // And wait for all the queued up work to complete
   CUDACHECK(cudaStreamSynchronize(stream));
 
+  // nccl result is in self_data
   NCCLCHECK(ncclAllReduce(self_data_copy, self_data, data_size, ncclDtype,
                           ncclSum, comm, stream));
 
@@ -215,6 +223,8 @@ void run(int myRank, int nRanks, ncclComm_t &comm, int threads, int block_limit,
   CUDACHECK(cudaMallocHost(&nccl_result, data_size * sizeof(double)));
   CUDACHECK(cudaMallocHost(&my_result, data_size * sizeof(double)));
 
+  // copy self_data -> nccl_result
+  // copy result -> my_result
   convert_data<T><<<108, 1024, 0, stream>>>(self_data, result, nccl_result,
                                             my_result, data_size);
   CUDACHECK(cudaStreamSynchronize(stream));

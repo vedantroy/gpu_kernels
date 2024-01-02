@@ -39,9 +39,15 @@ Run with `mpirun --allow-run-as-root -np 2 ./fastallreduce_test.bin`
 - Also, `RankData *` is a pointer to `RankData` stored on GPU memory
 - `*d_rank_data_base` and `*d_rank_data_end` are pointers that mark the start and end, respectively, of a segment of GPU memory allocated for storing `RankData` instances. As new `RankData` instances are copied to the device, `*d_rank_data_base` is incremented, effectively moving the 'start' pointer forward. This means that `*d_rank_data_base` always points to the next available location within the allocated memory segment where new RankData can be copied.
 - `ipc_handles_` stores all the ipc handles so they can be closed once the `FastAllreduce` class is destroyed
-- `Metadata` stores a `Signal` + a counter for the current rank. The `Signal` contains a start/end field, both of which are a `union` of 64-bit int and 8-bytes. The `Signal` is a synchronization primitive.
-- `RankSignals` consists of an array of 8 device-pointers, each pointing to a `Signal`
-- `RankSignals` itself + the device-pointers are stored in CPU memory 
+- `Metadata` stores a `Signal` + a counter (both for the current rank). The `Signal` contains a start/end field, both of which are a `union` of 64-bit int and 8-bytes. The `Signal` is a synchronization primitive.
+- `RankSignals` consists of an array of 8 device-pointers, each pointing to a `Signal` on a different rank
+- `RankSignals` itself + the device-pointers are stored in CPU memory
+
+- [X] Understand the test data
+   - nccl reduces `self_data_copy` => `self_data`
+   - custom impl reduces `self_data` => `result`
+   - `self_data` is the 2nd section of the buffer
+- [ ] Understand synchronization primitive
 
 - [ ] Understand the rank data array
 - [ ] Understand basic MPI programming model
