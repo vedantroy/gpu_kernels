@@ -1,4 +1,5 @@
 #include "sync.cuh"
+#include "mpi.h"
 
 #define CUDACHECK(cmd)                                              \
   do {                                                              \

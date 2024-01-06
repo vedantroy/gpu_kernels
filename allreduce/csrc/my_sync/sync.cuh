@@ -8,6 +8,13 @@
     }                                                               \
   } while (0)
 
+__global__ void sync_test_kernel() {
+  if (threadIdx.x == 0) {
+    printf("Hello from block %d\n", blockIdx.x);
+  }
+}
+
+namespace synctest {
 struct Signal {
   alignas(64) union {
     uint64_t flag;
@@ -30,13 +37,6 @@ struct RankSignals {
   volatile Signal *signals[8];
 };
 
-__global__ void sync_test_kernel() {
-  if (threadIdx.x == 0) {
-    printf("Hello from block %d\n", blockIdx.x);
-  }
-}
-
-namespace synctest {
   class Sync {
       public:
         int rank_;
