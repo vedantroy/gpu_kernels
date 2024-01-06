@@ -49,8 +49,6 @@ Run with `mpirun --allow-run-as-root -np 2 ./fastallreduce_test.bin`
    - `self_data` is the 2nd section of the buffer
 - [ ] Understand synchronization primitive
 
-Ok. If I'm doing this for real. Trading off against *all the other things I could be doing*, let's get serious.
-
 - [X] Roughly understand the barrier code
 - Grid shape: `<<<numBlocks, numThreads, shared mem, stream>>>`
 - 1D block grid + 1D thread grid per block (evenly splitting `size` over the # of blocks)
