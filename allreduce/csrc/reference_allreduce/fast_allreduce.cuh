@@ -151,10 +151,12 @@ __device__ __forceinline__ void start_sync(const RankSignals &sg,
       // reset
       meta->sg.end.flag = 0;
   }
+
   if (threadIdx.x == 0) {
     while (meta->sg.start.flag != FLAG)
       ;
   }
+
   __syncthreads();
 }
 
@@ -165,7 +167,7 @@ __device__ __forceinline__ void end_sync(const RankSignals &sg,
   __syncthreads();
   __shared__ int num;
   if (threadIdx.x == 0) num = atomicAdd((int *)&meta->counter, 1);
-  __syncthreads();
+  __syncthreads(); // I'm guessing this is necessary for all threads to see the updated value of `num`
 
   // Only the last completing block can perform the end synchronization
   // This can ensures when the final busy wait ends, all ranks must have
