@@ -76,4 +76,10 @@ class Sync {
         }
         sync_test_kernel<<<blocks, threads>>>();
       }
+
+      ~Sync() {
+          for (auto ptr : ipc_handles_) {
+            CUDACHECK(cudaIpcCloseMemHandle(ptr));
+          }
+      }
 }
