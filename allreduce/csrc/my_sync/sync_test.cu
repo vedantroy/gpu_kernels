@@ -41,6 +41,7 @@ int main(int argc, char **argv) {
   // (where tensors are not allocated at the start of a cudaIpcMemHandle)
   // (that's why we set them to 0 here)
   std::vector<int64_t> offsets(world_size, 0);
+
   mysync::Sync sync(state, rank_handles, offsets, world_rank);
 
   // 4 blocks, 64 threads per block

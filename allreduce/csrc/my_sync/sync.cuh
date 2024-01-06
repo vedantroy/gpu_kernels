@@ -183,6 +183,7 @@ public:
   }
 
   ~Sync() {
+    printf("Rank %d calling destructor\n", rank_);
     for (auto ptr : ipc_handles_) {
       CUDACHECK(cudaIpcCloseMemHandle(ptr));
     }

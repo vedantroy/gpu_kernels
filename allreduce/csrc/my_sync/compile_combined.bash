@@ -48,4 +48,4 @@ echo "Compute capability: $code"
 script_dir=$(dirname "$0")
 
 # nvcc command with dynamic architecture
-nvcc -I/usr/include -I/usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -I/usr/lib/x86_64-linux-gnu/openmpi/include -L/usr/lib/x86_64-linux-gnu/openmpi/lib -lmpi -L/usr/lib/x86_64-linux-gnu -lnccl -gencode=arch=$arch,code=$code "$script_dir/sync_test.cu" -o sync_test.bin --expt-relaxed-constexpr
+nvcc -I/usr/include -I/usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -I/usr/lib/x86_64-linux-gnu/openmpi/include -L/usr/lib/x86_64-linux-gnu/openmpi/lib -lmpi -L/usr/lib/x86_64-linux-gnu -lnccl -gencode=arch=$arch,code=$code "$script_dir/sync_test.cu" -o sync_test.bin --expt-relaxed-constexpr -G

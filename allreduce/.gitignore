@@ -12,3 +12,6 @@ __pycache__/
 
 .ninja_deps
 .ninja_log
+
+*.log
+*.memcheck
