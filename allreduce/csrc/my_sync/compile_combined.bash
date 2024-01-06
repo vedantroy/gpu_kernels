@@ -24,9 +24,9 @@ then
       arch=compute_86
       code=sm_86
       ;;
-    *V100*)
-      arch=compute_70
-      code=sm_70
+    *4090*)
+      arch=compute_90
+      code=sm_90
       ;;
     *)
       echo "Unsupported GPU: $gpu_name"

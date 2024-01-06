@@ -1,0 +1,1 @@
+docker run --rm debian:bookworm-slim dpkg -l | grep libc6

@@ -1,12 +1,24 @@
-#define CUDACHECK(cmd)                                              \
-  do {                                                              \
-    cudaError_t e = cmd;                                            \
-    if (e != cudaSuccess) {                                         \
-      printf("Failed: Cuda error %s:%d '%s'\n", __FILE__, __LINE__, \
-             cudaGetErrorString(e));                                \
-      exit(EXIT_FAILURE);                                           \
-    }                                                               \
-  } while (0)
+#include <cuda.h>
+// #include <cuda_bf16.h>
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
+
+#include <iostream>
+// #include <limits>
+// #include <unordered_map>
+#include <vector>
+
+//#define CUDACHECK(cmd)                                              \
+//  do {                                                              \
+//    cudaError_t e = cmd;                                            \
+//    if (e != cudaSuccess) {                                         \
+//      printf("Failed: Cuda error %s:%d '%s'\n", __FILE__, __LINE__, \
+//             cudaGetErrorString(e));                                \
+//      exit(EXIT_FAILURE);                                           \
+//    }                                                               \
+//  } while (0)
+
+#define CUDACHECK(cmd) cmd
 
 __global__ void sync_test_kernel() {
   if (threadIdx.x == 0) {
@@ -14,7 +26,7 @@ __global__ void sync_test_kernel() {
   }
 }
 
-namespace synctest {
+namespace mysync {
 struct Signal {
   alignas(64) union {
     uint64_t flag;
@@ -43,7 +55,7 @@ struct RankSignals {
         int world_size_;
 
         // below are device pointers
-        RankSignals rank_signals_;
+        RankSignals sg_;
         BarrierState *barrier_state_;
 
         std::vector<void *> ipc_handles_;
@@ -57,9 +69,8 @@ struct RankSignals {
             BarrierState *rank_barrier_state;
             if (i != rank_) {
               char *handle;
-              CUDACHECK(cudaIpcOpenMemHandle(
-                  (void **)&handle, *((const cudaIpcMemHandle_t *)handles[i].data()),
-                  cudaIpcMemLazyEnablePeerAccess));
+              CUDACHECK(cudaIpcOpenMemHandle((void **)&handle, handles[i],
+                                             cudaIpcMemLazyEnablePeerAccess));
               ipc_handles_.push_back(handle);
               handle += offsets[i];
               rank_barrier_state = (BarrierState *)handle;
@@ -83,5 +94,5 @@ struct RankSignals {
               CUDACHECK(cudaIpcCloseMemHandle(ptr));
             }
         }
-  }
+  };
 }

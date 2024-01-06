@@ -26,6 +26,10 @@ set -euxo pipefail
       arch=compute_70
       code=sm_70
       ;;
+    *4090*)
+      arch=compute_90
+      code=sm_90
+      ;;
     *)
       echo "Unsupported GPU: $gpu_name"
       exit 1
