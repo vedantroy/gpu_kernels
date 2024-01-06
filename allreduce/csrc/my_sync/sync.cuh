@@ -4,26 +4,99 @@
 #include <cuda_runtime.h>
 
 #include <iostream>
-// #include <limits>
+#include <limits>
 // #include <unordered_map>
 #include <vector>
 
-//#define CUDACHECK(cmd)                                              \
-//  do {                                                              \
-//    cudaError_t e = cmd;                                            \
-//    if (e != cudaSuccess) {                                         \
-//      printf("Failed: Cuda error %s:%d '%s'\n", __FILE__, __LINE__, \
-//             cudaGetErrorString(e));                                \
-//      exit(EXIT_FAILURE);                                           \
-//    }                                                               \
-//  } while (0)
+#define CUDACHECK(cmd)                                                         \
+  do {                                                                         \
+    cudaError_t e = cmd;                                                       \
+    if (e != cudaSuccess) {                                                    \
+      printf("Failed: Cuda error %s:%d '%s'\n", __FILE__, __LINE__,            \
+             cudaGetErrorString(e));                                           \
+      exit(EXIT_FAILURE);                                                      \
+    }                                                                          \
+  } while (0)
 
-#define CUDACHECK(cmd) cmd
+// #define CUDACHECK(cmd) cmd
 
-__global__ void sync_test_kernel() {
-  if (threadIdx.x == 0) {
-    printf("Hello from block %d\n", blockIdx.x);
+__device__ uint64_t get_target_flag(int world_size) {
+  // 64 1s
+  auto m = std::numeric_limits<uint64_t>::max();
+  // Each GPU gets 8 bits in the flag
+  // E.g, if there are 4 GPUs, the target flag is
+  // 32 0s followed by 32 1s
+  return m >> ((8 - world_size) * 8);
+}
+
+__device__ void start_sync(const RankSignals &sg, volatile BarrierState *bstate,
+                           int rank, int world_size) {
+  bool first_block_in_rank = blockIdx.x == 0;
+  if (first_block_in_rank) {
+    if (threadIdx.x < world_size) {
+      int other_rank = threadIdx.x;
+      // warp 1: notify all other ranks that this rank has reached the sync
+      // point
+      sg.signals[other_rank]->start[rank] = 255;
+    } else if (threadIdx.x == 32) {
+      // warp 2: reset the end signal
+      bstate->sg.end.flag = 0;
+    }
   }
+
+  // busy-wait until the current rank's signal
+  // has been written to by all ranks
+  if (threadIdx.x == 0) {
+    uint64_t target_flag = get_target_flag(world_size);
+    while (bstate->sg.start.flag != target_flag)
+      ;
+  }
+  __syncthreads();
+}
+
+__device__ void end_sync(const RankSignals &sg, volatile BarrierState *bstate,
+                         int rank, int world_size) {
+  __shared__ int blocks_at_sync_point;
+  if (threadIdx.x == 0)
+    blocks_at_sync_point = atomicAdd(&bstate->counter, 1);
+  __syncthreads(); // (I think) this is necessary so `blocks_at_sync_point` is
+                   // assigned
+
+  bool last_block_at_sync_point = (blocks_at_sync_point == gridDim.x - 1);
+  if (last_block_at_sync_point) {
+    if (threadIdx.x < world_size) {
+      int other_rank = threadIdx.x;
+      // warp 1: notify all other ranks that this rank has reached the sync
+      // point
+      sg.signals[other_rank]->end[rank] = 255;
+    } else if (threadIdx.x == 32) {
+      // warp 2: reset the start signal + counter
+      bstate->sg.start.flag = 0;
+      bstate->counter = 0;
+    }
+  }
+
+  // busy-wait until the current rank's signal
+  // has been written to by all ranks
+  if (threadIdx.x == 0) {
+    uint64_t target_flag = get_target_flag(world_size);
+    while (bstate->sg.end.flag != target_flag)
+      ;
+  }
+  __syncthreads();
+}
+
+__global__ void sync_test_kernel(const RankSignals &sg,
+                                 volatile BarrierState *bstate, int rank,
+                                 int world_size) {
+  if (threadIdx.x == 0) {
+    printf("Hello from rank %d, block %d\n", rank, blockIdx.x);
+  }
+  __syncthreads();
+
+  start_sync(sg, bstate, rank, world_size);
+
+  end_sync(sg, bstate, rank, world_size);
 }
 
 namespace mysync {
@@ -50,49 +123,50 @@ struct RankSignals {
 };
 
 class Sync {
-    public:
-      int rank_;
-      int world_size_;
+public:
+  int rank_;
+  int world_size_;
 
-      // below are device pointers
-      RankSignals sg_;
-      BarrierState *barrier_state_;
+  // below are device pointers
+  RankSignals sg_;
+  BarrierState *barrier_state_;
 
-      std::vector<void *> ipc_handles_;
+  std::vector<void *> ipc_handles_;
 
-      Sync(BarrierState *barrier_state, const cudaIpcMemHandle_t *handles,
-           const std::vector<int64_t> &offsets, int rank)
-           : rank_(rank),
-             world_size_(offsets.size()),
-             barrier_state_(barrier_state) {
-        for (int i = 0; i < world_size_; i++) {
-          BarrierState *rank_barrier_state;
-          if (i != rank_) {
-            char *handle;
-            CUDACHECK(cudaIpcOpenMemHandle((void **)&handle, handles[i],
-                                           cudaIpcMemLazyEnablePeerAccess));
-            ipc_handles_.push_back(handle);
-            handle += offsets[i];
-            rank_barrier_state = (BarrierState *)handle;
-          } else {
-            rank_barrier_state = barrier_state_;
-          }
-          // This is pure pointer math (no access to on-device memory)
-          sg_.signals[i] = &rank_barrier_state->sg;
-        }
+  Sync(BarrierState *barrier_state, const cudaIpcMemHandle_t *handles,
+       const std::vector<int64_t> &offsets, int rank)
+      : rank_(rank), world_size_(offsets.size()),
+        barrier_state_(barrier_state) {
+    for (int i = 0; i < world_size_; i++) {
+      BarrierState *rank_barrier_state;
+      if (i != rank_) {
+        char *handle;
+        CUDACHECK(cudaIpcOpenMemHandle((void **)&handle, handles[i],
+                                       cudaIpcMemLazyEnablePeerAccess));
+        ipc_handles_.push_back(handle);
+        handle += offsets[i];
+        rank_barrier_state = (BarrierState *)handle;
+      } else {
+        rank_barrier_state = barrier_state_;
       }
+      // This is pure pointer math (no access to on-device memory)
+      sg_.signals[i] = &rank_barrier_state->sg;
+    }
+  }
 
-      void sync_test(int blocks, int threads) {
-        if (threads % 32 != 0 || threads <= 32) {
-          throw std::runtime_error("Threads must be a multiple of 32 greater than 32");
-        }
-        sync_test_kernel<<<blocks, threads>>>();
-      }
+  void sync_test(int blocks, int threads) {
+    if (threads % 32 != 0 || threads <= 32) {
+      throw std::runtime_error(
+          "Threads must be a multiple of 32 greater than 32");
+    }
+    sync_test_kernel<<<blocks, threads>>>(sg_, barrier_state_, rank_,
+                                          world_size_);
+  }
 
-      ~Sync() {
-          for (auto ptr : ipc_handles_) {
-            CUDACHECK(cudaIpcCloseMemHandle(ptr));
-          }
-      }
+  ~Sync() {
+    for (auto ptr : ipc_handles_) {
+      CUDACHECK(cudaIpcCloseMemHandle(ptr));
+    }
+  }
 };
-}
+} // namespace mysync
