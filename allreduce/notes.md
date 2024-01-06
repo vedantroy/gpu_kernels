@@ -169,8 +169,14 @@ Return values of `_share_cuda_`:
 ```
 
 - [X] Email author asking why `end_sync` is needed? *Anything else I should email him on?*
-- [ ] 
-
 - [ ] Sanity-check by adding print statements + nanosleep
+   - Each rank delays by a second, each block delays by a second
+   - We print the total # of clock cycles ?? before reaching the start sync point
+   - We print the total # of clock cycles after the sync point
+   - Each rank delays by a second, each block delays by a 0.1 second
+   - We print the total # of clock cycles ?? before reaching the end sync point
+   - We print the total # of clock cycles after the end sync point
+   - Expectation: after the start sync, the minimum clock cycles taken = (secs * # ranks)
+   - Expectation: after the end sync, the min clock cycles taken = 2 * (secs * #ranks) + (2 * 0.1secs * #blocks) -- *the end sync should be equal to time of last block on last rank*
 - [ ] Implement the synchronization primitive
 - [ ] Write a CUDA test verifying that it works
