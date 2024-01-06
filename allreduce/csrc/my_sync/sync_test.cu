@@ -43,7 +43,8 @@ int main(int argc, char **argv) {
   std::vector<int64_t> offsets(world_size, 0);
   mysync::Sync sync(state, rank_handles, offsets, world_rank);
 
-  sync.sync_test(8, 64);
+  // 4 blocks, 64 threads per block
+  sync.sync_test(4, 64);
 
   MPI_Finalize();
   return EXIT_SUCCESS;

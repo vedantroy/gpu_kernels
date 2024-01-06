@@ -20,85 +20,6 @@
 
 // #define CUDACHECK(cmd) cmd
 
-__device__ uint64_t get_target_flag(int world_size) {
-  // 64 1s
-  auto m = std::numeric_limits<uint64_t>::max();
-  // Each GPU gets 8 bits in the flag
-  // E.g, if there are 4 GPUs, the target flag is
-  // 32 0s followed by 32 1s
-  return m >> ((8 - world_size) * 8);
-}
-
-__device__ void start_sync(const RankSignals &sg, volatile BarrierState *bstate,
-                           int rank, int world_size) {
-  bool first_block_in_rank = blockIdx.x == 0;
-  if (first_block_in_rank) {
-    if (threadIdx.x < world_size) {
-      int other_rank = threadIdx.x;
-      // warp 1: notify all other ranks that this rank has reached the sync
-      // point
-      sg.signals[other_rank]->start[rank] = 255;
-    } else if (threadIdx.x == 32) {
-      // warp 2: reset the end signal
-      bstate->sg.end.flag = 0;
-    }
-  }
-
-  // busy-wait until the current rank's signal
-  // has been written to by all ranks
-  if (threadIdx.x == 0) {
-    uint64_t target_flag = get_target_flag(world_size);
-    while (bstate->sg.start.flag != target_flag)
-      ;
-  }
-  __syncthreads();
-}
-
-__device__ void end_sync(const RankSignals &sg, volatile BarrierState *bstate,
-                         int rank, int world_size) {
-  __shared__ int blocks_at_sync_point;
-  if (threadIdx.x == 0)
-    blocks_at_sync_point = atomicAdd(&bstate->counter, 1);
-  __syncthreads(); // (I think) this is necessary so `blocks_at_sync_point` is
-                   // assigned
-
-  bool last_block_at_sync_point = (blocks_at_sync_point == gridDim.x - 1);
-  if (last_block_at_sync_point) {
-    if (threadIdx.x < world_size) {
-      int other_rank = threadIdx.x;
-      // warp 1: notify all other ranks that this rank has reached the sync
-      // point
-      sg.signals[other_rank]->end[rank] = 255;
-    } else if (threadIdx.x == 32) {
-      // warp 2: reset the start signal + counter
-      bstate->sg.start.flag = 0;
-      bstate->counter = 0;
-    }
-  }
-
-  // busy-wait until the current rank's signal
-  // has been written to by all ranks
-  if (threadIdx.x == 0) {
-    uint64_t target_flag = get_target_flag(world_size);
-    while (bstate->sg.end.flag != target_flag)
-      ;
-  }
-  __syncthreads();
-}
-
-__global__ void sync_test_kernel(const RankSignals &sg,
-                                 volatile BarrierState *bstate, int rank,
-                                 int world_size) {
-  if (threadIdx.x == 0) {
-    printf("Hello from rank %d, block %d\n", rank, blockIdx.x);
-  }
-  __syncthreads();
-
-  start_sync(sg, bstate, rank, world_size);
-
-  end_sync(sg, bstate, rank, world_size);
-}
-
 namespace mysync {
 struct Signal {
   alignas(64) union {
@@ -121,6 +42,104 @@ static_assert(sizeof(BarrierState) == 256);
 struct RankSignals {
   volatile Signal *signals[8];
 };
+
+__device__ uint64_t get_target_flag(int world_size) {
+  // 64 1s
+  auto m = std::numeric_limits<uint64_t>::max();
+  // Each GPU gets 8 bits in the flag
+  // E.g, if there are 4 GPUs, the target flag is
+  // 32 0s followed by 32 1s
+  return m >> ((8 - world_size) * 8);
+}
+
+__device__ void start_sync(const RankSignals &sg, volatile BarrierState *bstate,
+                           int rank, int world_size) {
+  bool first_block_in_rank = blockIdx.x == 0;
+  if (first_block_in_rank) {
+    if (threadIdx.x < world_size) {
+      int other_rank = threadIdx.x;
+      // warp 1: notify all other ranks that this rank has reached the sync
+      // point
+      sg.signals[other_rank]->start.data[rank] = 255;
+    } else if (threadIdx.x == 32) {
+      // warp 2: reset the end signal
+      bstate->sg.end.flag = 0;
+    }
+  }
+
+  // busy-wait until the current rank's signal
+  // has been written to by all ranks
+  if (threadIdx.x == 0) {
+    uint64_t target_flag = get_target_flag(world_size);
+    while (bstate->sg.start.flag != target_flag)
+      ;
+  }
+  __syncthreads();
+}
+
+__device__ void end_sync(const RankSignals &sg, volatile BarrierState *bstate,
+                         int rank, int world_size) {
+  __shared__ int blocks_at_sync_point;
+  if (threadIdx.x == 0)
+    blocks_at_sync_point = atomicAdd((int *)&bstate->counter, 1);
+  __syncthreads(); // (I think) this ensures `blocks_at_sync_point` is assigned
+
+  bool last_block_at_sync_point = (blocks_at_sync_point == gridDim.x - 1);
+  if (last_block_at_sync_point) {
+    if (threadIdx.x < world_size) {
+      int other_rank = threadIdx.x;
+      // warp 1: notify all other ranks that this rank has reached the sync
+      // point
+      sg.signals[other_rank]->end.data[rank] = 255;
+    } else if (threadIdx.x == 32) {
+      // warp 2: reset the start signal + counter
+      bstate->sg.start.flag = 0;
+      bstate->counter = 0;
+    }
+  }
+
+  // busy-wait until the current rank's signal
+  // has been written to by all ranks
+  if (threadIdx.x == 0) {
+    uint64_t target_flag = get_target_flag(world_size);
+    while (bstate->sg.end.flag != target_flag)
+      ;
+  }
+  __syncthreads();
+}
+
+#define NS_PER_S 1000000000
+
+__global__ void sync_test_kernel(const RankSignals &sg,
+                                 volatile BarrierState *bstate, int rank,
+                                 int world_size) {
+  uint64_t start, end;
+  if (threadIdx.x == 0) {
+    printf("Hello from rank %d, block %d\n", rank, blockIdx.x);
+    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(start));
+    __nanosleep((rank * NS_PER_S) + (blockIdx.x * NS_PER_S * 0.1));
+  }
+  __syncthreads();
+
+  start_sync(sg, bstate, rank, world_size);
+
+  if (threadIdx.x == 0) {
+    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end));
+    printf("Hello from rank %d, block %d, elapsed time: %llu ns\n", rank,
+           blockIdx.x, end - start);
+    __nanosleep((rank * NS_PER_S) + (blockIdx.x * NS_PER_S * 0.1));
+  }
+  __syncthreads();
+
+  end_sync(sg, bstate, rank, world_size);
+
+  if (threadIdx.x == 0) {
+    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end));
+    printf("Hello from rank %d, block %d, elapsed time: %llu ns\n", rank,
+           blockIdx.x, end - start);
+  }
+  __syncthreads();
+}
 
 class Sync {
 public:
