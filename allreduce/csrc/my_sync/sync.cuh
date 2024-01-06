@@ -109,13 +109,36 @@ __device__ void end_sync(const RankSignals &sg, volatile BarrierState *bstate,
 
 #define NS_PER_S 1000000000
 
+__global__ void sleepKernel() {
+    uint64_t start, end;
+    uint64_t sleepTime = 5 * NS_PER_S;     // Sleep for 5 seconds
+
+    if (threadIdx.x == 0) {
+        // Record start time
+        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(start));
+
+        // Sleep for 5 seconds
+        __nanosleep(sleepTime);
+
+        // Record end time
+        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end));
+
+        // Calculate and print the elapsed time in nanoseconds and milliseconds
+        uint64_t elapsedNs = end - start;
+        double elapsedMs = (double)elapsedNs / 1000000.0;
+        printf("Slept for %llu nanoseconds (%.3f milliseconds)\n", elapsedNs, elapsedMs);
+    }
+}
+
+// The %globaltimer register seems to not be working
 __global__ void sync_test_kernel(RankSignals sg,
                                  volatile BarrierState *bstate, int rank,
                                  int world_size) {
 
+  int sleep_time = (rank * NS_PER_S) + (blockIdx.x * NS_PER_S * 0.1);
   uint64_t start, end;
   if (threadIdx.x == 0) {
-    printf("Hello from rank %d, block %d\n", rank, blockIdx.x);
+    printf("rank %d, block %d, sleep time: %d\n", rank, blockIdx.x, sleep_time);
     asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(start));
     __nanosleep((rank * NS_PER_S) + (blockIdx.x * NS_PER_S * 0.1));
   }
@@ -178,6 +201,9 @@ public:
       throw std::runtime_error(
           "Threads must be a multiple of 32 greater than 32");
     }
+    sleepKernel<<<1, 1>>>();
+    cudaDeviceSynchronize();
+
     sync_test_kernel<<<blocks, threads>>>(sg_, barrier_state_, rank_,
                                           world_size_);
     cudaDeviceSynchronize();
