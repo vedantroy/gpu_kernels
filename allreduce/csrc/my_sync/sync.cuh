@@ -123,10 +123,9 @@ __global__ void sync_test_kernel(RankSignals sg,
 
   start_sync(sg, bstate, rank, world_size);
 
-  /*
   if (threadIdx.x == 0) {
     asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end));
-    printf("Hello from rank %d, block %d, elapsed time: %llu ns\n", rank,
+    printf("[start_sync] Hello from rank %d, block %d, elapsed time: %llu ns\n", rank,
            blockIdx.x, end - start);
     __nanosleep((rank * NS_PER_S) + (blockIdx.x * NS_PER_S * 0.1));
   }
@@ -136,11 +135,10 @@ __global__ void sync_test_kernel(RankSignals sg,
 
   if (threadIdx.x == 0) {
     asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end));
-    printf("Hello from rank %d, block %d, elapsed time: %llu ns\n", rank,
+    printf("[end_sync] Hello from rank %d, block %d, elapsed time: %llu ns\n", rank,
            blockIdx.x, end - start);
   }
   __syncthreads();
-  */
 }
 
 class Sync {
@@ -172,7 +170,6 @@ public:
       }
       // This is pure pointer math (no access to on-device memory)
       sg_.signals[i] = &rank_barrier_state->sg;
-      printf("rank: %d, signals: %p, %p\n", rank, sg_.signals[i], &rank_barrier_state->sg);
     }
   }
 
