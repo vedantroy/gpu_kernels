@@ -1,11 +1,9 @@
 #include <cuda.h>
-// #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
 #include <iostream>
 #include <limits>
-// #include <unordered_map>
 #include <vector>
 
 #define CUDACHECK(cmd)                                                         \
@@ -72,8 +70,9 @@ __device__ void start_sync(const RankSignals &sg, volatile BarrierState *bstate,
   if (threadIdx.x == 0) {
     uint64_t target_flag = get_target_flag(world_size);
     while (bstate->sg.start.flag != target_flag)
-      ;
+    ;
   }
+  if (threadIdx.x == 0 && first_block_in_rank) printf("1st block rank %d done busy-wait\n", rank);
   __syncthreads();
 }
 
@@ -110,9 +109,10 @@ __device__ void end_sync(const RankSignals &sg, volatile BarrierState *bstate,
 
 #define NS_PER_S 1000000000
 
-__global__ void sync_test_kernel(const RankSignals &sg,
+__global__ void sync_test_kernel(RankSignals sg,
                                  volatile BarrierState *bstate, int rank,
                                  int world_size) {
+
   uint64_t start, end;
   if (threadIdx.x == 0) {
     printf("Hello from rank %d, block %d\n", rank, blockIdx.x);
@@ -123,6 +123,7 @@ __global__ void sync_test_kernel(const RankSignals &sg,
 
   start_sync(sg, bstate, rank, world_size);
 
+  /*
   if (threadIdx.x == 0) {
     asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end));
     printf("Hello from rank %d, block %d, elapsed time: %llu ns\n", rank,
@@ -139,6 +140,7 @@ __global__ void sync_test_kernel(const RankSignals &sg,
            blockIdx.x, end - start);
   }
   __syncthreads();
+  */
 }
 
 class Sync {
@@ -170,6 +172,7 @@ public:
       }
       // This is pure pointer math (no access to on-device memory)
       sg_.signals[i] = &rank_barrier_state->sg;
+      printf("rank: %d, signals: %p, %p\n", rank, sg_.signals[i], &rank_barrier_state->sg);
     }
   }
 
@@ -180,6 +183,7 @@ public:
     }
     sync_test_kernel<<<blocks, threads>>>(sg_, barrier_state_, rank_,
                                           world_size_);
+    cudaDeviceSynchronize();
   }
 
   ~Sync() {
