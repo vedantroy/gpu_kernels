@@ -1,5 +1,5 @@
-#include "mpi.h"
 #include "allreduce.cuh"
+#include "mpi.h"
 
 #define MPICHECK(cmd)                                                          \
   do {                                                                         \

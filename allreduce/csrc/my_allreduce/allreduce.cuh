@@ -41,6 +41,14 @@ struct RankSignals {
   volatile Signal *signals[8];
 };
 
+// TODO: Why alignment of 16?
+// TODO: Why even put this on the GPU at all?
+
+// struct __align__(16) RankPtrs {
+struct __align__(16) RankPtrs {
+  const void *__restrict__ ptrs[8];
+};
+
 __device__ uint64_t get_target_flag(int world_size) {
   // 64 1s
   auto m = std::numeric_limits<uint64_t>::max();
@@ -70,9 +78,10 @@ __device__ void start_sync(const RankSignals &sg, volatile BarrierState *bstate,
   if (threadIdx.x == 0) {
     uint64_t target_flag = get_target_flag(world_size);
     while (bstate->sg.start.flag != target_flag)
-    ;
+      ;
   }
-  if (threadIdx.x == 0 && first_block_in_rank) printf("1st block rank %d done busy-wait\n", rank);
+  if (threadIdx.x == 0 && first_block_in_rank)
+    printf("1st block rank %d done busy-wait\n", rank);
   __syncthreads();
 }
 
@@ -107,61 +116,119 @@ __device__ void end_sync(const RankSignals &sg, volatile BarrierState *bstate,
   __syncthreads();
 }
 
-#define NS_PER_S (uint64_t)1000000000
+// like std::array, but aligned
+// TODO: Exactly why does this matter?
+template <typename T, int sz> struct __align__(alignof(T) * sz) array_t {
+  T data[sz];
+  using type = T;
+  static constexpr int size = sz;
+};
 
-__global__ void sleepKernel() {
-    uint64_t start, end;
-    uint64_t sleepTime = 5 * NS_PER_S;     // Sleep for 5 seconds
+/*
+Maximize memory efficiency w/ ld.128,st.128 instructions
+The GPU cannot load more than 128 bytes at a time
+CUDA threads can read a maximum of 16 bytes at once
+So, each thread loads as many elements of type T as can be accommodated within
+16 bytes
+https://stackoverflow.com/questions/72147025/what-are-cuda-global-memory-32-64-and-128-byte-transactions
+*/
+template <typename T> struct packed_t {
+  // the (P)acked type for load/store
+  using P = array_t<T, 16 / sizeof(T)>;
+  // the (A)ccumulator type for reduction
+  using A = array_t<float, 16 / sizeof(T)>;
+};
 
-    if (threadIdx.x == 0) {
-        // Record start time
-        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(start));
+#define DINLINE __device__ __forceinline__
 
-        // Sleep for 5 seconds
-        __nanosleep(sleepTime);
+// scalar add functions
+// for some reason when compiling with Pytorch, the + operator for half and
+// bfloat is disabled so we call the intrinsics directly
+DINLINE half &assign_add(half &a, half b) {
+  a = __hadd(a, b);
+  return a;
+}
+DINLINE float &assign_add(float &a, float b) { return a += b; }
 
-        // Record end time
-        asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end));
-
-        // Calculate and print the elapsed time in nanoseconds and milliseconds
-        uint64_t elapsedNs = end - start;
-        double elapsedMs = (double)elapsedNs / 1000000.0;
-        printf("Slept for %llu nanoseconds (%.3f milliseconds)\n", elapsedNs, elapsedMs);
-    }
+template <typename T, int N>
+DINLINE array_t<T, N> &packed_assign_add(array_t<T, N> &a, array_t<T, N> b) {
+#pragma unroll
+  for (int i = 0; i < N; i++) {
+    assign_add(a.data[i], b.data[i]);
+  }
+  return a;
 }
 
-// The %globaltimer register seems to not be working
-__global__ void sync_test_kernel(RankSignals sg,
-                                 volatile BarrierState *bstate, int rank,
-                                 int world_size) {
-
-  int sleep_time = (rank * NS_PER_S) + (blockIdx.x * NS_PER_S * 0.1);
-  uint64_t start, end;
-  if (threadIdx.x == 0) {
-    printf("rank %d, block %d, sleep time: %d\n", rank, blockIdx.x, sleep_time);
-    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(start));
-    __nanosleep((rank * NS_PER_S) + (blockIdx.x * NS_PER_S * 0.1));
+template <typename T, int N>
+DINLINE array_t<float, N> upcast(array_t<T, N> val) {
+  if constexpr (std::is_same<T, float>::value) {
+    return val;
+  } else {
+    array_t<float, N> out;
+#pragma unroll
+    for (int i = 0; i < N; i++) {
+      out.data[i] = upcast_s(val.data[i]);
+    }
+    return out;
   }
-  __syncthreads();
+}
+
+template <typename O> DINLINE O downcast(array_t<float, O::size> val) {
+  if constexpr (std::is_same<typename O::type, float>::value) {
+    return val;
+  } else {
+    O out;
+#pragma unroll
+    for (int i = 0; i < O::size; i++) {
+      out.data[i] = downcast_s<typename O::type>(val.data[i]);
+    }
+    return out;
+  }
+}
+
+template <typename P, int ngpus, typename A>
+DINLINE P packed_reduce(const P *ptrs[], int idx) {
+  A tmp = upcast(ptrs[0][idx]);
+#pragma unroll
+  for (int i = 1; i < ngpus; i++) {
+    packed_assign_add(tmp, upcast(ptrs[i][idx]));
+  }
+  return downcast<P>(tmp);
+}
+
+template <typename T, int ngpus>
+__global__ void allreduce_kernel(
+    RankPtrs buffer_ptrs, // Pointers to the buffer to reduce, 1 for each GPU
+    RankSignals sg, volatile BarrierState *bstate, T *__restrict__ result,
+    int rank, int world_size) {
+  // Both P,A are array_t
+  using P = typename packed_t<T>::P;
+  using A = typename packed_t<T>::A;
+  const P *ptrs[ngpus];
+
+  // TODO: Why are we loading the pointers in a circular fashion?
+  // Since every allreduce sums across all ranks, we should be able to
+  // load the pointers inorder
+#pragma unroll
+  for (int i = 0; i < world_size; i++) {
+    int target = (rank + i) % world_size;
+    ptrs[i] = (P *)buffer_ptrs->ptrs[target];
+  }
 
   start_sync(sg, bstate, rank, world_size);
 
-  if (threadIdx.x == 0) {
-    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end));
-    printf("[start_sync] Hello from rank %d, block %d, elapsed time: %llu ns\n", rank,
-           blockIdx.x, end - start);
-    __nanosleep((rank * NS_PER_S) + (blockIdx.x * NS_PER_S * 0.1));
+  // This is summing across all the ranks
+  // at the given index
+  // it's basically `result[idx] = rank1[idx] + rank2[idx] + rank3[idx]`
+  // All complexity comes from
+  // the packed type -- which means idx is actually a range of indices
+  for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < size;
+       idx += gridDim.x * blockDim.x) {
+    // packed_reduce is just iterating over all the ranks
+    ((P *)result)[idx] = packed_reduce<P, ngpus, A>(ptrs, idx);
   }
-  __syncthreads();
 
   end_sync(sg, bstate, rank, world_size);
-
-  if (threadIdx.x == 0) {
-    asm volatile("mov.u64 %0, %%globaltimer;" : "=l"(end));
-    printf("[end_sync] Hello from rank %d, block %d, elapsed time: %llu ns\n", rank,
-           blockIdx.x, end - start);
-  }
-  __syncthreads();
 }
 
 class Sync {
@@ -169,8 +236,11 @@ public:
   int rank_;
   int world_size_;
 
-  // below are device pointers
+  // Contains pointers to GPU memory
   RankSignals sg_;
+
+  // Point to GPU memory
+  RankPtrs *buffer_ptrs_;
   BarrierState *barrier_state_;
 
   std::vector<void *> ipc_handles_;
@@ -196,16 +266,48 @@ public:
     }
   }
 
+  void register_buffer(const std::vector<std::string> &handles,
+                       const std::vector<int64_t> &offsets, void *rank_ptr) {
+    if (buffer_ptrs_ != nullptr) {
+      throw std::runtime_error("register_buffer() called twice");
+    }
+
+    CUDACHECK(cudaMalloc(&buffer_ptrs_, sizeof(RankPtrs)));
+    for (int i = 0; i < world_size_; i++) {
+      if (i != rank_) {
+        void *ptr;
+        CUDACHECK(cudaIpcOpenMemHandle(
+            &ptr, *((const cudaIpcMemHandle_t *)handles[i].data()),
+            cudaIpcMemLazyEnablePeerAccess));
+        ipc_handles_.push_back(ptr);
+        ptr = (char *)ptr + offsets[i];
+        (buffer_ptrs_)->ptrs[i] = ptr;
+      } else {
+        (buffer_ptrs_)->ptrs[i] = rank_ptr;
+      }
+    }
+  }
+
   void sync_test(int blocks, int threads) {
     if (threads % 32 != 0 || threads <= 32) {
       throw std::runtime_error(
           "Threads must be a multiple of 32 greater than 32");
     }
-    sleepKernel<<<1, 1>>>();
-    cudaDeviceSynchronize();
-
-    sync_test_kernel<<<blocks, threads>>>(sg_, barrier_state_, rank_,
-                                          world_size_);
+    if (buffer_ptrs_ == nullptr) {
+      throw std::runtime_error("register_buffer() must be called first");
+    }
+    switch (world_size_) {
+    case 2:
+      allreduce_kernel<half, 2><<<blocks, threads>>>(
+          buffer_ptrs_, sg_, barrier_state_, rank_, world_size_);
+      break;
+    case 4:
+      allreduce_kernel<half, 4><<<blocks, threads>>>(
+          buffer_ptrs_, sg_, barrier_state_, rank_, world_size_);
+      break;
+    default:
+      throw std::runtime_error("Unsupported world size");
+    }
     cudaDeviceSynchronize();
   }
 
@@ -214,6 +316,11 @@ public:
     for (auto ptr : ipc_handles_) {
       CUDACHECK(cudaIpcCloseMemHandle(ptr));
     }
+    /*
+    if (buffer_ptrs_ != nullptr) {
+      CUDACHECK(cudaFree(buffer_ptrs_));
+    }
+    */
   }
 };
 } // namespace mysync

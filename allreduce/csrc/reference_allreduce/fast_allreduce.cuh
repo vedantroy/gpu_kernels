@@ -215,6 +215,7 @@ __global__ void __launch_bounds__(512, 1)
     cross_device_reduce_1stage(RankData *_dp, RankSignals sg,
                                volatile Metadata *meta, T *__restrict__ result,
                                int rank, int size) {
+  // Both P,A are array_t                    
   using P = typename packed_t<T>::P;
   using A = typename packed_t<T>::A;
   const P *ptrs[ngpus];
