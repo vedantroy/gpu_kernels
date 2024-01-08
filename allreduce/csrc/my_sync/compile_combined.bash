@@ -28,6 +28,10 @@ then
       arch=compute_90
       code=sm_90
       ;;
+    *A4000*)
+      arch=compute_86
+      code=sm_86
+      ;;
     *)
       echo "Unsupported GPU: $gpu_name"
       exit 1

@@ -21,8 +21,16 @@ int main(int argc, char **argv) {
 
   CUDACHECK(cudaSetDevice(world_rank));
 
+  #define N_ELEMENTS (1024 * 8)
+  #define DTYPE half
+
+  // We allocate the barrier state, input buffer, and output buffer, in one pass, so we only need to
+  // create + allgather a single ipc handle
   mysync::BarrierState *state;
-  CUDACHECK(cudaMalloc(&state, sizeof(mysync::BarrierState)));
+  CUDACHECK(cudaMalloc(&state, sizeof(mysync::BarrierState) + (2 * sizeof(DTYPE) * N_ELEMENTS)));
+
+  DTYPE *input_buf = reinterpret_cast<DTYPE *>(state + 1);
+  DTYPE *output_buf = input_buf + N_ELEMENTS;
 
   cudaIpcMemHandle_t cur_rank_handle;
   cudaIpcMemHandle_t rank_handles[8];
@@ -41,11 +49,20 @@ int main(int argc, char **argv) {
   // (where tensors are not allocated at the start of a cudaIpcMemHandle)
   // (that's why we set them to 0 here)
   std::vector<int64_t> offsets(world_size, 0);
-
   mysync::Sync sync(state, rank_handles, offsets, world_rank);
 
-  // 4 blocks, 64 threads per block
-  sync.sync_test(4, 64);
+  {
+    // register the buffer
+    std::vector<std::string> handles(world_size);
+    for (int i = 0; i < world_size; ++i) {
+      char *begin = reinterpret_cast<char *>(&rank_handles[i]);
+      char *end = reinterpret_cast<char *>(&rank_handles[i + 1]);
+      handles.emplace_back(begin, end);
+    }
+    sync.register_buffer(handles, offsets, input_buf);
+  }
+
+  sync.sync_test<DTYPE>(N_ELEMENTS, output_buf);
 
   MPI_Finalize();
   return EXIT_SUCCESS;

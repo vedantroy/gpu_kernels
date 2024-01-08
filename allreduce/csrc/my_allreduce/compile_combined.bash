@@ -7,7 +7,7 @@ then
   gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader)
 
   # Set architecture based on GPU name
-  case $gpu_name in
+    case $gpu_name in
     *T4*)
       arch=compute_75
       code=sm_75
@@ -27,6 +27,10 @@ then
     *4090*)
       arch=compute_90
       code=sm_90
+      ;;
+    *A4000*)
+      arch=compute_86
+      code=sm_86
       ;;
     *)
       echo "Unsupported GPU: $gpu_name"

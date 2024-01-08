@@ -16,6 +16,14 @@
     }                                                                          \
   } while (0)
 
+#define CHECK_NOT_NULL(ptr)                                                    \
+  do {                                                                         \
+    if (ptr == NULL) {                                                         \
+      printf("Failed: Null pointer error %s:%d\n", __FILE__, __LINE__);        \
+      exit(EXIT_FAILURE);                                                      \
+    }                                                                          \
+  } while (0)
+
 // #define CUDACHECK(cmd) cmd
 
 namespace mysync {
@@ -80,8 +88,6 @@ __device__ void start_sync(const RankSignals &sg, volatile BarrierState *bstate,
     while (bstate->sg.start.flag != target_flag)
       ;
   }
-  if (threadIdx.x == 0 && first_block_in_rank)
-    printf("1st block rank %d done busy-wait\n", rank);
   __syncthreads();
 }
 
@@ -108,6 +114,10 @@ __device__ void end_sync(const RankSignals &sg, volatile BarrierState *bstate,
 
   // busy-wait until the current rank's signal
   // has been written to by all ranks
+
+  // For simplicity, we do a cross-gpu sync on all blocks
+  // But, in practice, if this is the last sync, we only need to do a cross-gpu sync
+  // on 1 block per rank, and let the other blocks use the kernel exit to sync
   if (threadIdx.x == 0) {
     uint64_t target_flag = get_target_flag(world_size);
     while (bstate->sg.end.flag != target_flag)
@@ -140,6 +150,17 @@ template <typename T> struct packed_t {
 };
 
 #define DINLINE __device__ __forceinline__
+
+// scalar cast functions
+DINLINE float upcast_s(half val) { return __half2float(val); }
+
+// downcast_s should never be called when the input is a `float`
+template <typename T>
+DINLINE T downcast_s(float val);
+template <>
+DINLINE half downcast_s(float val) {
+  return __float2half(val);
+}
 
 // scalar add functions
 // for some reason when compiling with Pytorch, the + operator for half and
@@ -200,7 +221,7 @@ template <typename T, int ngpus>
 __global__ void allreduce_kernel(
     RankPtrs buffer_ptrs, // Pointers to the buffer to reduce, 1 for each GPU
     RankSignals sg, volatile BarrierState *bstate, T *__restrict__ result,
-    int rank, int world_size) {
+    int rank, int world_size, int nelements) {
   // Both P,A are array_t
   using P = typename packed_t<T>::P;
   using A = typename packed_t<T>::A;
@@ -212,7 +233,7 @@ __global__ void allreduce_kernel(
 #pragma unroll
   for (int i = 0; i < world_size; i++) {
     int target = (rank + i) % world_size;
-    ptrs[i] = (P *)buffer_ptrs->ptrs[target];
+    ptrs[i] = (P *)buffer_ptrs.ptrs[target];
   }
 
   start_sync(sg, bstate, rank, world_size);
@@ -222,7 +243,7 @@ __global__ void allreduce_kernel(
   // it's basically `result[idx] = rank1[idx] + rank2[idx] + rank3[idx]`
   // All complexity comes from
   // the packed type -- which means idx is actually a range of indices
-  for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < size;
+  for (int idx = blockIdx.x * blockDim.x + threadIdx.x; idx < nelements;
        idx += gridDim.x * blockDim.x) {
     // packed_reduce is just iterating over all the ranks
     ((P *)result)[idx] = packed_reduce<P, ngpus, A>(ptrs, idx);
@@ -236,11 +257,11 @@ public:
   int rank_;
   int world_size_;
 
+  RankPtrs *buffer_ptrs_;
+
   // Contains pointers to GPU memory
   RankSignals sg_;
 
-  // Point to GPU memory
-  RankPtrs *buffer_ptrs_;
   BarrierState *barrier_state_;
 
   std::vector<void *> ipc_handles_;
@@ -272,7 +293,9 @@ public:
       throw std::runtime_error("register_buffer() called twice");
     }
 
-    CUDACHECK(cudaMalloc(&buffer_ptrs_, sizeof(RankPtrs)));
+    buffer_ptrs_ = (RankPtrs*)malloc(sizeof(RankPtrs));
+    CHECK_NOT_NULL(buffer_ptrs_);
+
     for (int i = 0; i < world_size_; i++) {
       if (i != rank_) {
         void *ptr;
@@ -288,22 +311,31 @@ public:
     }
   }
 
-  void sync_test(int blocks, int threads) {
-    if (threads % 32 != 0 || threads <= 32) {
-      throw std::runtime_error(
-          "Threads must be a multiple of 32 greater than 32");
-    }
+  template <typename T>
+  void sync_test(int num_elements, T *output) {
     if (buffer_ptrs_ == nullptr) {
       throw std::runtime_error("register_buffer() must be called first");
     }
+
+    int threads = 64;
+    auto num_packed_elements = packed_t<T>::P::size;
+    if (num_elements % num_packed_elements != 0) {
+      throw std::runtime_error(
+          "Number of elements must be a multiple of " +
+          std::to_string(num_packed_elements));
+    }
+
+    #define CEIL_DIV(x, y) (((x) + (y) - 1) / (y))
+    int blocks = CEIL_DIV(num_packed_elements, threads);
+
     switch (world_size_) {
     case 2:
       allreduce_kernel<half, 2><<<blocks, threads>>>(
-          buffer_ptrs_, sg_, barrier_state_, rank_, world_size_);
+          *buffer_ptrs_, sg_, barrier_state_, output, rank_, world_size_, num_elements);
       break;
     case 4:
       allreduce_kernel<half, 4><<<blocks, threads>>>(
-          buffer_ptrs_, sg_, barrier_state_, rank_, world_size_);
+          *buffer_ptrs_, sg_, barrier_state_, output, rank_, world_size_, num_elements);
       break;
     default:
       throw std::runtime_error("Unsupported world size");
@@ -316,6 +348,9 @@ public:
     for (auto ptr : ipc_handles_) {
       CUDACHECK(cudaIpcCloseMemHandle(ptr));
     }
+    // free buffer_ptrs_
+    free(buffer_ptrs_);
+
     /*
     if (buffer_ptrs_ != nullptr) {
       CUDACHECK(cudaFree(buffer_ptrs_));

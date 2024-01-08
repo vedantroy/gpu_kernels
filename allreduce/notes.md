@@ -170,7 +170,7 @@ Return values of `_share_cuda_`:
 
 - [X] Email author asking why `end_sync` is needed? *Anything else I should email him on?*
 - [X] Implement the synchronization primitive
-- [ ] Debug the sync primitive
+- [X] Debug the sync primitive
    - [X] Try tools like cuda-memcheck
    - [X] Narrowed it down to 1-line
        - CUDA memcheck is fine & all, but be methodical. There are very few places in this kernel where memory is read/written
@@ -178,7 +178,7 @@ Return values of `_share_cuda_`:
       - We can write through `BarrierState` but not `RankSignals`?
       - The signal's memory address is being set correctly ...
       - (Not sure if I actually tried this), we can't even print out the memory address of `RankSignals` in the kernel??
-- [ ] Sanity-check by adding print statements + nanosleep
+- [X] Sanity-check by adding print statements + nanosleep -- *nevermind, `__nanosleep` is not useful*
    - Each rank delays by a second, each block delays by a second
    - We print the total # of clock cycles ?? before reaching the start sync point
    - We print the total # of clock cycles after the sync point

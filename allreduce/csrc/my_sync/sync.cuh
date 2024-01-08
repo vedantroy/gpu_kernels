@@ -108,6 +108,10 @@ __device__ void end_sync(const RankSignals &sg, volatile BarrierState *bstate,
   __syncthreads();
 }
 
+// Any code using nanosleep here is incorrect
+// 1. nanosleep takes in a 32bit int
+// 2. nanosleep has a delay ranging from 0 to 2x the specified amount
+// 3. nanosleep can only delay a max of 1ms
 #define NS_PER_S (uint64_t)1000000000
 
 __global__ void sleepKernel() {
