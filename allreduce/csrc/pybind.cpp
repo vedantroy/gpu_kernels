@@ -1,7 +1,12 @@
 #include <torch/extension.h>
+
 #include "add_one/add_one.h"
-// #include "reference_allreduce/fast_allreduce.cuh"
+#include "my_allreduce/allreduce.cuh"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("add_one", &add_one, "Add one to all elements of the tensor");
+  m.def("add_one", &add_one, "Add one to all elements of the tensor");
+
+  m.def("init_ar", &init_ar, "init_ar");
+  m.def("allreduce", &allreduce, "allreduce");
+  m.def("register_buffer", &register_buffer, "register_buffer");
 }
