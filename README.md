@@ -1,7 +1,10 @@
 # GPU Kernels
-This project implements GPU kernels in Triton for [PagedAttention](https://arxiv.org/abs/2309.06180) and [Activation-aware Weight Quantization](https://arxiv.org/abs/2306.00978).
+This project implements GPU kernels in CUDA/Triton for Allreduce, [PagedAttention](https://arxiv.org/abs/2309.06180), and [Activation-aware Weight Quantization](https://arxiv.org/abs/2306.00978).
 
-PagedAttention:
+### Allreduce
+There's an implementation of a one-pass allreduce (all ranks read/write from other ranks). The implementation is largely a stripped down version of: https://github.com/vllm-project/vllm/pull/2192. In the process of writing the code, I learned a bunch about CUDA/MPI/etc.
+
+### PagedAttention:
 ![Paged Attention](./assets/PagedAttention.png)
 
 Paged attention stores KV vectors in a cache, instead of recomputing them.
@@ -10,7 +13,7 @@ The PagedAttention kernel is not faster than the existing CUDA kernel because Tr
 1. https://github.com/openai/triton/issues/2488
 2. https://github.com/openai/triton/issues/2522
 
-AWQ:
+### AWQ:
 ![AWQ](./assets/awq.png)
 
 AWQ is a quantization method. This kernel implements fast inference using the quantized weights.
