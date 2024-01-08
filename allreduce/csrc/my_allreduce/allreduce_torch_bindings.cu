@@ -44,7 +44,7 @@ void register_buffer(fptr_t _fa, torch::Tensor &t,
 void allreduce(fptr_t _fa, torch::Tensor &out) {
   auto fa = reinterpret_cast<mysync::Sync *>(_fa);
   switch (out.scalar_type()) {
-    case at::ScalarType::Half: {
+    case at::ScalarType::Half: { 
       fa->allreduce<half>(out.numel(), reinterpret_cast<half *>(out.data_ptr()));
       break;
     }
