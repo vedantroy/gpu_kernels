@@ -58,6 +58,10 @@ int main(int argc, char **argv) {
   CUDACHECK(cudaMemcpy(input_buf_cpu2, input_buf, N_ELEMENTS * sizeof(DTYPE), cudaMemcpyDeviceToHost));
   printf("Rank %d: input_buf[0] = %f\n", world_rank, __half2float(input_buf_cpu2[0]));
 
+  DTYPE *output_buf_cpu2 = new DTYPE[N_ELEMENTS];
+  CUDACHECK(cudaMemcpy(output_buf_cpu2, output_buf, N_ELEMENTS * sizeof(DTYPE), cudaMemcpyDeviceToHost));
+  printf("Rank %d: output_buf[0] = %f\n", world_rank, __half2float(output_buf_cpu2[0]));
+
   cudaIpcMemHandle_t cur_rank_handle;
   cudaIpcMemHandle_t rank_handles[8];
 
@@ -123,14 +127,15 @@ int main(int argc, char **argv) {
     //   printf("Rank %d: opened handle %d before registration (v2)\n", world_rank, i);
     // }
 
-    sync.register_buffer(handles, offsets, input_buf);
+    std::vector<int64_t> buffer_offsets(world_size, sizeof(mysync::BarrierState));
+    sync.register_buffer(handles, buffer_offsets, input_buf);
   }
 
   sync.sync_test<DTYPE>(N_ELEMENTS, output_buf);
 
-  DTYPE *output_buf_cpu2 = new DTYPE[N_ELEMENTS];
-  CUDACHECK(cudaMemcpy(output_buf_cpu, output_buf, N_ELEMENTS * sizeof(DTYPE), cudaMemcpyDeviceToHost));
-  printf("Rank %d: output_buf[0] = %f\n", world_rank, __half2float(output_buf_cpu2[0]));
+  DTYPE *output_buf_cpu3 = new DTYPE[N_ELEMENTS];
+  CUDACHECK(cudaMemcpy(output_buf_cpu3, output_buf, N_ELEMENTS * sizeof(DTYPE), cudaMemcpyDeviceToHost));
+  printf("Rank %d: output_buf[0] = %f\n", world_rank, __half2float(output_buf_cpu3[0]));
 
 
   MPI_Finalize();
