@@ -39,6 +39,12 @@ int main(int argc, char **argv) {
     input_buf_cpu[i] = __float2half(1.0f);
   }
 
+  // set output buf to all 0s
+  // (not that this should matter)
+  for (int i = 0; i < N_ELEMENTS; ++i) {
+    output_buf_cpu[i] = __float2half(0.0f);
+  }
+
   // copy the entire thing to the GPU
   mysync::BarrierState *state;
   CUDACHECK(cudaMalloc(&state, sizeof(mysync::BarrierState) + (2 * sizeof(DTYPE) * N_ELEMENTS)));
@@ -93,34 +99,29 @@ int main(int argc, char **argv) {
       */
     }
 
-    /*
-    {
-      for (int i = 0; i < world_size; ++i) {
-        if (i == world_rank) continue; // skip self (otherwise we get an 'invalid context' error)
-        cudaIpcMemHandle_t handle = rank_handles[i];
-        // printf("Rank %d: opening handle %d before registration\n", world_rank, i);
-        char* ptr;
-        CUDACHECK(cudaIpcOpenMemHandle((void **)&ptr, handle, cudaIpcMemLazyEnablePeerAccess));
-        printf("Rank %d: opened handle %d before registration\n", world_rank, i);
-      }
-    }
+    // {
+    //   for (int i = 0; i < world_size; ++i) {
+    //     if (i == world_rank) continue; // skip self (otherwise we get an 'invalid context' error)
+    //     cudaIpcMemHandle_t handle = rank_handles[i];
+    //     // printf("Rank %d: opening handle %d before registration\n", world_rank, i);
+    //     char* ptr;
+    //     CUDACHECK(cudaIpcOpenMemHandle((void **)&ptr, handle, cudaIpcMemLazyEnablePeerAccess));
+    //     printf("Rank %d: opened handle %d before registration\n", world_rank, i);
+    //   }
+    // }
 
-    {
-      for (int i = 0; i < world_size; ++i) {
-        if (i == world_rank) continue; // skip self (otherwise we get an 'invalid context' error)
-        // cudaIpcMemHandle_t handle;
-        // memcpy(&handle, handles[i].data(), sizeof(cudaIpcMemHandle_t));
+    // for (int i = 0; i < world_size; ++i) {
+    //   if (i == world_rank) continue; // skip self (otherwise we get an 'invalid context' error)
+    //   // cudaIpcMemHandle_t handle;
+    //   // memcpy(&handle, handles[i].data(), sizeof(cudaIpcMemHandle_t));
     
-        char* ptr;
-        // CUDACHECK(cudaIpcOpenMemHandle((void **)&ptr, handle, cudaIpcMemLazyEnablePeerAccess));
-        CUDACHECK(cudaIpcOpenMemHandle(
-            (void**)&ptr, *((const cudaIpcMemHandle_t *)handles[i].data()),
-            cudaIpcMemLazyEnablePeerAccess));
-        printf("Rank %d: opened handle %d before registration (v2)\n", world_rank, i);
-      }
-      */
-
-    }
+    //   char* ptr;
+    //   // CUDACHECK(cudaIpcOpenMemHandle((void **)&ptr, handle, cudaIpcMemLazyEnablePeerAccess));
+    //   CUDACHECK(cudaIpcOpenMemHandle(
+    //       (void**)&ptr, *((const cudaIpcMemHandle_t *)handles[i].data()),
+    //       cudaIpcMemLazyEnablePeerAccess));
+    //   printf("Rank %d: opened handle %d before registration (v2)\n", world_rank, i);
+    // }
 
     sync.register_buffer(handles, offsets, input_buf);
   }
