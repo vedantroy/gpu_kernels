@@ -33,6 +33,9 @@ int main(int argc, char **argv) {
   DTYPE *input_buf = reinterpret_cast<DTYPE *>(state + 1);
   DTYPE *output_buf = input_buf + N_ELEMENTS;
 
+  // initialize the input_buf to all 1s using cudaMemset
+  CUDACHECK(cudaMemset(input_buf, 1, N_ELEMENTS));
+
   cudaIpcMemHandle_t cur_rank_handle;
   cudaIpcMemHandle_t rank_handles[8];
 
@@ -58,12 +61,22 @@ int main(int argc, char **argv) {
     std::vector<std::string> handles(world_size);
     handles.reserve(world_size);
     for (int i = 0; i < world_size; ++i) {
+      char buffer[sizeof(cudaIpcMemHandle_t)];
+      memcpy(buffer, &rank_handles[i], sizeof(cudaIpcMemHandle_t));
+      handles[i] = std::string(buffer, sizeof(cudaIpcMemHandle_t));
+
+      /*
       char *begin = (char *)(&rank_handles[i]);
       char *end1 = (char *)(&rank_handles[i + 1]);
       char *end2 = begin + sizeof(cudaIpcMemHandle_t);
       assert(end1 == end2);
+      std::string handle_str(begin, end1);
+      handles.push_back(handle_str);
       handles.emplace_back(begin, end1);
+      handles.push_back(begin, end1);
+      */
     }
+
     {
       for (int i = 0; i < world_size; ++i) {
         if (i == world_rank) continue; // skip self (otherwise we get an 'invalid context' error)
@@ -74,10 +87,31 @@ int main(int argc, char **argv) {
         printf("Rank %d: opened handle %d before registration\n", world_rank, i);
       }
     }
-    sync.register_buffer(handles, offsets, input_buf, rank_handles);
+
+    {
+      for (int i = 0; i < world_size; ++i) {
+        if (i == world_rank) continue; // skip self (otherwise we get an 'invalid context' error)
+        // cudaIpcMemHandle_t handle;
+        // memcpy(&handle, handles[i].data(), sizeof(cudaIpcMemHandle_t));
+    
+        char* ptr;
+        // CUDACHECK(cudaIpcOpenMemHandle((void **)&ptr, handle, cudaIpcMemLazyEnablePeerAccess));
+        CUDACHECK(cudaIpcOpenMemHandle(
+            (void**)&ptr, *((const cudaIpcMemHandle_t *)handles[i].data()),
+            cudaIpcMemLazyEnablePeerAccess));
+        printf("Rank %d: opened handle %d before registration (v2)\n", world_rank, i);
+      }
+    }
+
+    sync.register_buffer(handles, offsets, input_buf);
   }
 
   sync.sync_test<DTYPE>(N_ELEMENTS, output_buf);
+
+  DTYPE *output_buf_cpu = new DTYPE[N_ELEMENTS];
+  CUDACHECK(cudaMemcpy(output_buf_cpu, output_buf, N_ELEMENTS * sizeof(DTYPE), cudaMemcpyDeviceToHost));
+  printf("Rank %d: output_buf[0] = %f\n", world_rank, __half2float(output_buf_cpu[0]));
+
 
   MPI_Finalize();
   return EXIT_SUCCESS;

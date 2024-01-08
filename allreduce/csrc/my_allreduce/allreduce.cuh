@@ -289,7 +289,7 @@ public:
   }
 
   void register_buffer(const std::vector<std::string> &handles,
-                       const std::vector<int64_t> &offsets, void *rank_ptr, cudaIpcMemHandle_t *buf_handles) {
+                       const std::vector<int64_t> &offsets, void *rank_ptr) {
     if (buffer_ptrs_ != nullptr) {
       throw std::runtime_error("register_buffer() called twice");
     }
@@ -300,20 +300,9 @@ public:
     for (int i = 0; i < world_size_; i++) {
       if (i != rank_) {
         char *ptr;
-
-        // cudaIpcMemHandle_t handle;
-        // memcpy(&handle, handles[i].data(), sizeof(handle));
-        // CUDACHECK(cudaIpcOpenMemHandle(
-        //     (void**)&ptr, handle,
-        //     cudaIpcMemLazyEnablePeerAccess));
-
         CUDACHECK(cudaIpcOpenMemHandle(
-            (void**)&ptr, buf_handles[i],
+            (void**)&ptr, *((const cudaIpcMemHandle_t *)handles[i].data()),
             cudaIpcMemLazyEnablePeerAccess));
-
-        // CUDACHECK(cudaIpcOpenMemHandle(
-        //     (void**)&ptr, *((const cudaIpcMemHandle_t *)handles[i].data()),
-        //     cudaIpcMemLazyEnablePeerAccess));
         ipc_handles_.push_back(ptr);
         (buffer_ptrs_)->ptrs[i] = ptr + offsets[i];
       } else {
