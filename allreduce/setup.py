@@ -40,6 +40,8 @@ setup(
             sources=[
                 "csrc/pybind.cpp",
                 "csrc/add_one/add_one.cu",
+                "csrc/my_allreduce/allreduce_torch_bindings.cu",
+                # "csrc/my_allreduce/allreduce.cuh",
                 # "csrc/reference_allreduce/fast_allreduce.cu",
             ],
             extra_compile_args=extra_compile_args,

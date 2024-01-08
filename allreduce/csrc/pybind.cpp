@@ -1,7 +1,7 @@
 #include <torch/extension.h>
 
 #include "add_one/add_one.h"
-#include "my_allreduce/allreduce.cuh"
+#include "my_allreduce/allreduce_torch_bindings.cu"
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("add_one", &add_one, "Add one to all elements of the tensor");

@@ -312,7 +312,7 @@ public:
   }
 
   template <typename T>
-  void sync_test(int num_elements, T *output) {
+  void allreduce(int num_elements, T *output) {
     if (buffer_ptrs_ == nullptr) {
       throw std::runtime_error("register_buffer() must be called first");
     }

@@ -31,7 +31,7 @@ fptr_t init_ar(torch::Tensor &bstate, torch::Tensor &rank_data,
     std::memcpy(&ipc_handles[i], handles[i].data(), sizeof(cudaIpcMemHandle_t));
   }
   return (fptr_t) new mysync::Sync(
-      reinterpret_cast<msync::BarrierState *>(bstate.data_ptr()), ipc_handles, offsets, rank);
+      reinterpret_cast<mysync::BarrierState *>(bstate.data_ptr()), ipc_handles, offsets, rank);
 }
 
 void register_buffer(fptr_t _fa, torch::Tensor &t,
@@ -43,12 +43,9 @@ void register_buffer(fptr_t _fa, torch::Tensor &t,
 
 void allreduce(fptr_t _fa, torch::Tensor &out) {
   auto fa = reinterpret_cast<mysync::Sync *>(_fa);
-  TORCH_CHECK_EQ(inp.scalar_type(), out.scalar_type());
-  TORCH_CHECK_EQ(inp.numel(), out.numel());
-  switch (inp.scalar_type()) {
+  switch (out.scalar_type()) {
     case at::ScalarType::Half: {
-      fa->allreduce<half>(reinterpret_cast<half *>(out.data_ptr()),
-                          inp.numel());
+      fa->allreduce<half>(out.numel(), reinterpret_cast<half *>(out.data_ptr()));
       break;
     }
     default:
