@@ -2,7 +2,7 @@
 This project implements GPU kernels in CUDA/Triton for Allreduce, [PagedAttention](https://arxiv.org/abs/2309.06180), and [Activation-aware Weight Quantization](https://arxiv.org/abs/2306.00978).
 
 ### Allreduce
-There's an implementation of a one-pass allreduce (all ranks read/write from other ranks). The implementation is largely a stripped down version of: https://github.com/vllm-project/vllm/pull/2192. In the process of writing the code, I learned a bunch about CUDA/MPI/etc.
+There's an implementation of a one-pass allreduce (all ranks read/write from other ranks). The implementation is largely a stripped down version of: https://github.com/vllm-project/vllm/pull/2192. I rewrote parts from scratch, but also copy-pasted a fair bit as well. It's also similar to https://github.com/pytorch/pytorch/pull/114001, which itself is inspired by FasterTransformer. In the process of writing the code, I learned a bunch about CUDA/MPI/etc.
 
 ### PagedAttention:
 ![Paged Attention](./assets/PagedAttention.png)
