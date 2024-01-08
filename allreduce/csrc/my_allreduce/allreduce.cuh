@@ -269,7 +269,7 @@ public:
   Sync(BarrierState *barrier_state, const cudaIpcMemHandle_t *handles,
        const std::vector<int64_t> &offsets, int rank)
       : rank_(rank), world_size_(offsets.size()),
-        barrier_state_(barrier_state) {
+        barrier_state_(barrier_state), buffer_ptrs_(nullptr) {
     for (int i = 0; i < world_size_; i++) {
       BarrierState *rank_barrier_state;
       if (i != rank_) {
@@ -279,6 +279,7 @@ public:
         ipc_handles_.push_back(handle);
         handle += offsets[i];
         rank_barrier_state = (BarrierState *)handle;
+        printf("Rank %d: opened handle %d in constructor\n", rank_, i);
       } else {
         rank_barrier_state = barrier_state_;
       }
@@ -288,7 +289,7 @@ public:
   }
 
   void register_buffer(const std::vector<std::string> &handles,
-                       const std::vector<int64_t> &offsets, void *rank_ptr) {
+                       const std::vector<int64_t> &offsets, void *rank_ptr, cudaIpcMemHandle_t *buf_handles) {
     if (buffer_ptrs_ != nullptr) {
       throw std::runtime_error("register_buffer() called twice");
     }
@@ -298,13 +299,23 @@ public:
 
     for (int i = 0; i < world_size_; i++) {
       if (i != rank_) {
-        void *ptr;
+        char *ptr;
+
+        // cudaIpcMemHandle_t handle;
+        // memcpy(&handle, handles[i].data(), sizeof(handle));
+        // CUDACHECK(cudaIpcOpenMemHandle(
+        //     (void**)&ptr, handle,
+        //     cudaIpcMemLazyEnablePeerAccess));
+
         CUDACHECK(cudaIpcOpenMemHandle(
-            &ptr, *((const cudaIpcMemHandle_t *)handles[i].data()),
+            (void**)&ptr, buf_handles[i],
             cudaIpcMemLazyEnablePeerAccess));
+
+        // CUDACHECK(cudaIpcOpenMemHandle(
+        //     (void**)&ptr, *((const cudaIpcMemHandle_t *)handles[i].data()),
+        //     cudaIpcMemLazyEnablePeerAccess));
         ipc_handles_.push_back(ptr);
-        ptr = (char *)ptr + offsets[i];
-        (buffer_ptrs_)->ptrs[i] = ptr;
+        (buffer_ptrs_)->ptrs[i] = ptr + offsets[i];
       } else {
         (buffer_ptrs_)->ptrs[i] = rank_ptr;
       }

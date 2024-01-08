@@ -1,5 +1,6 @@
 #include "allreduce.cuh"
 #include "mpi.h"
+#include <assert.h>
 
 #define MPICHECK(cmd)                                                          \
   do {                                                                         \
@@ -45,6 +46,7 @@ int main(int argc, char **argv) {
                          MPI_COMM_WORLD // MPI_Comm communicator
                          ));
 
+  
   // Offsets are only necessary for Pytorch bindings
   // (where tensors are not allocated at the start of a cudaIpcMemHandle)
   // (that's why we set them to 0 here)
@@ -54,12 +56,25 @@ int main(int argc, char **argv) {
   {
     // register the buffer
     std::vector<std::string> handles(world_size);
+    handles.reserve(world_size);
     for (int i = 0; i < world_size; ++i) {
-      char *begin = reinterpret_cast<char *>(&rank_handles[i]);
-      char *end = reinterpret_cast<char *>(&rank_handles[i + 1]);
-      handles.emplace_back(begin, end);
+      char *begin = (char *)(&rank_handles[i]);
+      char *end1 = (char *)(&rank_handles[i + 1]);
+      char *end2 = begin + sizeof(cudaIpcMemHandle_t);
+      assert(end1 == end2);
+      handles.emplace_back(begin, end1);
     }
-    sync.register_buffer(handles, offsets, input_buf);
+    {
+      for (int i = 0; i < world_size; ++i) {
+        if (i == world_rank) continue; // skip self (otherwise we get an 'invalid context' error)
+        cudaIpcMemHandle_t handle = rank_handles[i];
+        // printf("Rank %d: opening handle %d before registration\n", world_rank, i);
+        char* ptr;
+        CUDACHECK(cudaIpcOpenMemHandle((void **)&ptr, handle, cudaIpcMemLazyEnablePeerAccess));
+        printf("Rank %d: opened handle %d before registration\n", world_rank, i);
+      }
+    }
+    sync.register_buffer(handles, offsets, input_buf, rank_handles);
   }
 
   sync.sync_test<DTYPE>(N_ELEMENTS, output_buf);
