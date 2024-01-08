@@ -26,21 +26,31 @@ int main(int argc, char **argv) {
   #define DTYPE half
 
   // We allocate the barrier state, input buffer, and output buffer, in one pass, so we only need to
-  // create + allgather a single ipc handle
+  // cudaMalloc once, and we can use the same cudaIpcMemHandle_t for all of them.
+  
+  auto *state_cpu = (mysync::BarrierState *)malloc(sizeof(mysync::BarrierState) + (2 * sizeof(DTYPE) * N_ELEMENTS));
+  assert(state_cpu != NULL);
+
+  DTYPE *input_buf_cpu = reinterpret_cast<DTYPE *>(state_cpu + 1);
+  DTYPE *output_buf_cpu = input_buf_cpu + N_ELEMENTS;
+
+  // set input_buf_cpu to all 1s
+  for (int i = 0; i < N_ELEMENTS; ++i) {
+    input_buf_cpu[i] = __float2half(1.0f);
+  }
+
+  // copy the entire thing to the GPU
   mysync::BarrierState *state;
   CUDACHECK(cudaMalloc(&state, sizeof(mysync::BarrierState) + (2 * sizeof(DTYPE) * N_ELEMENTS)));
+  CUDACHECK(cudaMemcpy(state, state_cpu, sizeof(mysync::BarrierState) + (2 * sizeof(DTYPE) * N_ELEMENTS), cudaMemcpyHostToDevice));
 
   DTYPE *input_buf = reinterpret_cast<DTYPE *>(state + 1);
   DTYPE *output_buf = input_buf + N_ELEMENTS;
 
-  // initialize the input_buf to all 1s using cudaMemset
-  CUDACHECK(cudaMemset(input_buf, 1, N_ELEMENTS));
-
   // mem copy to cpu and print first element
-  DTYPE *input_buf_cpu = new DTYPE[N_ELEMENTS];
-  CUDACHECK(cudaMemcpy(input_buf_cpu, input_buf, N_ELEMENTS * sizeof(DTYPE), cudaMemcpyDeviceToHost));
-  printf("Rank %d: input_buf[0] = %f\n", world_rank, __half2float(input_buf_cpu[0]));
-
+  DTYPE *input_buf_cpu2 = new DTYPE[N_ELEMENTS];
+  CUDACHECK(cudaMemcpy(input_buf_cpu2, input_buf, N_ELEMENTS * sizeof(DTYPE), cudaMemcpyDeviceToHost));
+  printf("Rank %d: input_buf[0] = %f\n", world_rank, __half2float(input_buf_cpu2[0]));
 
   cudaIpcMemHandle_t cur_rank_handle;
   cudaIpcMemHandle_t rank_handles[8];
@@ -83,6 +93,7 @@ int main(int argc, char **argv) {
       */
     }
 
+    /*
     {
       for (int i = 0; i < world_size; ++i) {
         if (i == world_rank) continue; // skip self (otherwise we get an 'invalid context' error)
@@ -107,6 +118,8 @@ int main(int argc, char **argv) {
             cudaIpcMemLazyEnablePeerAccess));
         printf("Rank %d: opened handle %d before registration (v2)\n", world_rank, i);
       }
+      */
+
     }
 
     sync.register_buffer(handles, offsets, input_buf);
@@ -114,9 +127,9 @@ int main(int argc, char **argv) {
 
   sync.sync_test<DTYPE>(N_ELEMENTS, output_buf);
 
-  DTYPE *output_buf_cpu = new DTYPE[N_ELEMENTS];
+  DTYPE *output_buf_cpu2 = new DTYPE[N_ELEMENTS];
   CUDACHECK(cudaMemcpy(output_buf_cpu, output_buf, N_ELEMENTS * sizeof(DTYPE), cudaMemcpyDeviceToHost));
-  printf("Rank %d: output_buf[0] = %f\n", world_rank, __half2float(output_buf_cpu[0]));
+  printf("Rank %d: output_buf[0] = %f\n", world_rank, __half2float(output_buf_cpu2[0]));
 
 
   MPI_Finalize();

@@ -132,6 +132,7 @@ void run(int myRank, int nRanks, ncclComm_t &comm, int threads, int block_limit,
     for (int i = 0; i < nRanks; i++) {
       char *begin = (char *)&data_handles[i];
       char *end = (char *)&data_handles[i + 1];
+      // handles.emplace_back(begin, end);
       handles.emplace_back(begin, end);
     }
     std::vector<int64_t> offsets(
