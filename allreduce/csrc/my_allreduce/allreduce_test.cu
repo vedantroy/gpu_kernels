@@ -36,6 +36,12 @@ int main(int argc, char **argv) {
   // initialize the input_buf to all 1s using cudaMemset
   CUDACHECK(cudaMemset(input_buf, 1, N_ELEMENTS));
 
+  // mem copy to cpu and print first element
+  DTYPE *input_buf_cpu = new DTYPE[N_ELEMENTS];
+  CUDACHECK(cudaMemcpy(input_buf_cpu, input_buf, N_ELEMENTS * sizeof(DTYPE), cudaMemcpyDeviceToHost));
+  printf("Rank %d: input_buf[0] = %f\n", world_rank, __half2float(input_buf_cpu[0]));
+
+
   cudaIpcMemHandle_t cur_rank_handle;
   cudaIpcMemHandle_t rank_handles[8];
 
